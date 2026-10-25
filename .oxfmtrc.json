@@ -2,5 +2,5 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 100,
   "singleQuote": true,
-  "ignorePatterns": ["package-lock.json", "asteroid-fleet-game-concept.md"]
+  "ignorePatterns": ["pnpm-lock.yaml", "asteroid-fleet-game-concept.md"]
 }

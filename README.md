@@ -5,16 +5,18 @@ A browser idle game with an autobattler setup, in full 3D. You are the admiral, 
 ## Run it
 
 ```sh
-npm install
-npm run dev       # http://localhost:5173
-npm test          # simulation tests
-npm run build     # typecheck + production build into dist/
-npm run balance   # 2-hour headless economy run, prints income every 10 min
-npm run lint      # oxlint, type-aware via tsgolint (works with TypeScript 7)
-npm run format    # oxfmt; format:check verifies without writing
+pnpm install
+pnpm run dev       # http://localhost:5173
+pnpm test          # simulation tests
+pnpm run build     # typecheck + production build into dist/
+pnpm run balance   # 2-hour headless economy run, prints income every 10 min
+pnpm run lint      # oxlint, type-aware via tsgolint (works with TypeScript 7)
+pnpm run format    # oxfmt; format:check verifies without writing
 ```
 
-CI runs on every pull request and on pushes to `main`, on Node 22. The checks are `npm ci`, `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test`, and `npm run build`. The two-hour `npm run balance` script is local only and is skipped in CI.
+pnpm keeps one package store on the machine, so another git worktree reuses packages that are already downloaded.
+
+CI runs on every pull request and on pushes to `main`, on Node 22 with pnpm 12. The checks are `pnpm install --frozen-lockfile`, `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build`. The two-hour `pnpm run balance` script is local only and is skipped in CI.
 
 ## What is in this first playable slice
 

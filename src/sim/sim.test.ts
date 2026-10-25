@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { apply, prestige, researchPayout, settleOffline, shipCost } from './actions';
 import { fits, neighbours, occupancy } from './hangar';
-import { newGame } from './state';
+import { SOLAR_RATE } from './config';
+import { lvl } from './research';
+import { maxEnergy, newGame } from './state';
 import { step } from './tick';
 import type { GameState } from './types';
 
@@ -97,12 +99,43 @@ describe('simulation', () => {
 
   it('settles offline time at reduced efficiency without pirates', () => {
     const s = newGame(9);
-    s.incomeAvg = 10;
+    s.miningIncomeAvg = 10;
     const before = s.credits;
     const rep = settleOffline(s, 3600)!;
     expect(rep.credits).toBeCloseTo(18000);
     expect(s.credits - before).toBeCloseTo(18000);
     expect(s.pirates.length).toBe(0);
+  });
+
+  it('pays offline only from mining income, not salvage', () => {
+    const s = newGame(9);
+    s.miningIncomeAvg = 2;
+    s.incomeAvg = 10; // includes pirate salvage
+    const rep = settleOffline(s, 3600)!;
+    expect(rep.credits).toBeCloseTo(3600);
+  });
+
+  it('does not count offline credits toward prestige research', () => {
+    const s = newGame(9);
+    s.miningIncomeAvg = 10;
+    const before = researchPayout(s);
+    const ore = s.stats.oreValueDelivered;
+    settleOffline(s, 12 * 3600);
+    expect(s.stats.oreValueDelivered).toBe(ore);
+    expect(researchPayout(s)).toBe(before);
+  });
+
+  it('recharges energy from solar over the elapsed time, capped at max', () => {
+    const s = newGame(9);
+    const sys = s.systems[s.systemId];
+    const rate = SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar'));
+    s.carrier.energy = 0;
+    settleOffline(s, 100);
+    expect(s.carrier.energy).toBeCloseTo(Math.min(maxEnergy(s), rate * 100));
+    expect(s.carrier.energy).toBeLessThan(maxEnergy(s));
+    s.carrier.energy = 0;
+    settleOffline(s, 12 * 3600);
+    expect(s.carrier.energy).toBe(maxEnergy(s));
   });
 
   it('ship prices rise with fleet size', () => {

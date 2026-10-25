@@ -293,6 +293,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     },
     lifetime: carry?.lifetime ?? { prestiges: 0, researchEarned: 0 },
     incomeAvg: 0,
+    miningIncomeAvg: 0,
     powerMode: 'balanced',
     fx: [],
     log: [],

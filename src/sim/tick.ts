@@ -44,6 +44,7 @@ interface Ctx {
   haulerClaims: Set<number>; // barge ids a hauler is heading to
   recall: boolean;
   income: number;
+  mining: number;
 }
 
 // ---------- stat helpers ----------
@@ -164,6 +165,7 @@ export function step(s: GameState, dt = DT) {
     haulerClaims: new Set(),
     recall: false,
     income: 0,
+    mining: 0,
   };
   for (const sh of s.ships) {
     if (
@@ -227,6 +229,7 @@ export function step(s: GameState, dt = DT) {
   s.stats.creditsEarned += ctx.income;
   const a = Math.min(1, dt / 120);
   s.incomeAvg = s.incomeAvg * (1 - a) + (ctx.income / dt) * a;
+  s.miningIncomeAvg = s.miningIncomeAvg * (1 - a) + (ctx.mining / dt) * a;
   warpStep(s, dt);
 }
 
@@ -278,6 +281,7 @@ function refine(s: GameState, dt: number, ctx: Ctx) {
   c.energy -= amount * REFINE_ENERGY;
   s.credits += value;
   ctx.income += value;
+  ctx.mining += value;
 }
 
 /** Unload cargo at the carrier, capped by storage. Returns true when the hold is empty. */

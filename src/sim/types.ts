@@ -218,7 +218,8 @@ export interface GameState {
   reserveTimers: Partial<Record<ShipClass, number>>;
   stats: Stats;
   lifetime: { prestiges: number; researchEarned: number };
-  incomeAvg: number; // rolling credits/s, used for offline settlement
+  incomeAvg: number; // rolling credits/s, all sources (salvage included)
+  miningIncomeAvg: number; // rolling credits/s from refined ore only, used for offline settlement
   powerMode: 'balanced' | 'income' | 'defense';
   fx: Fx[];
   log: LogEntry[];

@@ -14,6 +14,8 @@ npm run lint      # oxlint, type-aware via tsgolint (works with TypeScript 7)
 npm run format    # oxfmt; format:check verifies without writing
 ```
 
+CI runs on every pull request and on pushes to `main`, on Node 22. The checks are `npm ci`, `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test`, and `npm run build`. The two-hour `npm run balance` script is local only and is skipped in CI.
+
 ## What is in this first playable slice
 
 | Concept area                                              | Status                                                                                                                                                                                                                     |

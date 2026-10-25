@@ -212,6 +212,9 @@ importers:
       oxlint-tsgolint:
         specifier: ^7.0.2005
         version: 7.0.2005
+      three-stdlib:
+        specifier: 2.36.1
+        version: 2.36.1(three@0.186.1)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

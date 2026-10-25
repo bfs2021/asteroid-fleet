@@ -5,6 +5,7 @@ import { newGame } from '../sim/state';
 import { step } from '../sim/tick';
 import type { GameState, Vec3 } from '../sim/types';
 import { allowSaveOverwrite, loadGame, saveGame, saveOverwriteBlocked } from './save';
+import { getActiveSlot, writeSlot } from './slots';
 
 const TICK_MS = DT * 1000;
 const MAX_CATCHUP_TICKS = 600; // a minute of sim; longer gaps go through offline settlement
@@ -154,6 +155,8 @@ class Engine {
     if (saveOverwriteBlocked()) return false;
     this.state.savedAt = Date.now();
     void saveGame(this.state);
+    const slot = getActiveSlot();
+    if (slot !== null) writeSlot(slot, this.state);
     return true;
   }
 

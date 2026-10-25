@@ -1,13 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { engine, useGame } from '../game/engine';
-import {
-  SAVE_BACKUP_FAILED_NOTICE,
-  SAVE_BACKUP_NOTICE,
-  exportSave,
-  importSave,
-  readBackups,
-  saveOverwriteBlocked,
-} from '../game/save';
+import { readBackups } from '../game/save';
+import { updateSettings, useSettings } from '../game/settings';
 import { Scene } from '../render/Scene';
 import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
@@ -16,6 +10,7 @@ import { DoctrinePanel } from './DoctrinePanel';
 import { FleetPanel } from './FleetPanel';
 import { Hud, fmt } from './Hud';
 import { ResearchPanel } from './ResearchPanel';
+import { GearButton, SettingsMenu } from './Settings';
 
 type Tab = 'fleet' | 'doctrine' | 'carrier' | 'research' | 'log';
 const TABS: [Tab, string][] = [
@@ -103,75 +98,6 @@ function Help({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
-  const [text, setText] = useState('');
-  const [msg, setMsg] = useState('');
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Menu</h2>
-        <div className="row" style={{ marginBottom: 10 }}>
-          <button onClick={onHelp}>How to play</button>
-          <button
-            onClick={() => {
-              if (engine.save()) setMsg('Saved.');
-              else if (engine.saveBackupFailed)
-                setMsg(`${SAVE_BACKUP_FAILED_NOTICE} It was not overwritten.`);
-              else setMsg(`${SAVE_BACKUP_NOTICE} It was not overwritten.`);
-            }}
-          >
-            Save now
-          </button>
-          <button onClick={() => setText(exportSave(engine.state))}>Export save</button>
-          <button
-            onClick={() => {
-              const s = importSave(text);
-              if (!s) {
-                setMsg('That is not a valid save.');
-                return;
-              }
-              if (
-                engine.saveBackupFailed &&
-                !confirm(
-                  'Import this save? The unreadable save could not be backed up and will be lost.',
-                )
-              ) {
-                return;
-              }
-              engine.replace(s);
-              setMsg('Save imported.');
-            }}
-          >
-            Import save
-          </button>
-          <button
-            onClick={() => {
-              const question = !saveOverwriteBlocked()
-                ? 'Wipe everything, including research?'
-                : engine.saveBackupFailed
-                  ? 'Start a new game? The unreadable save could not be backed up and will be lost.'
-                  : 'Start a new game? The unreadable save stays in its backup, and the primary slot will be replaced.';
-              if (confirm(question)) {
-                engine.reset();
-                onClose();
-              }
-            }}
-          >
-            Hard reset
-          </button>
-        </div>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Export fills this box; paste a save here to import."
-        />
-        {msg && <p className="hint">{msg}</p>}
-        <button onClick={onClose}>Close</button>
-      </div>
-    </div>
-  );
-}
-
 function Offline() {
   useGame();
   const r = engine.offline;
@@ -238,27 +164,35 @@ export function App() {
   const [tab, setTab] = useState<Tab>(() => read('af-tab', 'fleet'));
   const [tactical, setTactical] = useState(false);
   const [autoTactical, setAutoTactical] = useState(false);
-  const [quality, setQuality] = useState<'high' | 'low'>(() => read('af-quality', 'high'));
+  const settings = useSettings();
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(() => read<string>('af-seen-help', '') !== '1');
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => write('af-tab', tab), [tab]);
-  useEffect(() => write('af-quality', quality), [quality]);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-scale', String(settings.uiScale));
+  }, [settings.uiScale]);
+  const closeMenu = useCallback(() => setMenu(false), []);
 
   return (
     <div className="app">
       <div className="canvas-wrap">
-        <Scene tactical={tactical} quality={quality} onAutoTactical={setAutoTactical} />
+        <Scene
+          tactical={tactical}
+          quality={settings.quality}
+          bloom={settings.bloom}
+          onAutoTactical={setAutoTactical}
+        />
       </div>
       <Hud
         tactical={tactical}
         autoTactical={autoTactical}
-        quality={quality}
+        quality={settings.quality}
         onTactical={() => setTactical((v) => !v)}
-        onQuality={() => setQuality((q) => (q === 'high' ? 'low' : 'high'))}
-        onMenu={() => setMenu(true)}
+        onQuality={() => updateSettings({ quality: settings.quality === 'high' ? 'low' : 'high' })}
       />
+      <GearButton onClick={() => setMenu(true)} />
       <div className={`side ${collapsed ? 'collapsed' : ''}`}>
         <div className="tabs">
           {TABS.map(([id, label]) => (
@@ -303,8 +237,8 @@ export function App() {
       <Toast />
       <Offline />
       {menu && (
-        <Menu
-          onClose={() => setMenu(false)}
+        <SettingsMenu
+          onClose={closeMenu}
           onHelp={() => {
             setMenu(false);
             setHelp(true);

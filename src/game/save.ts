@@ -192,13 +192,38 @@ export function exportSave(state: GameState): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(state))));
 }
 
+export type DecodeResult = { ok: true; state: GameState } | { ok: false; error: string };
+
+const DECODE_ERRORS: Record<SaveFailure, string> = {
+  corrupt: 'That save is damaged or incomplete.',
+  newer: 'That save comes from a newer version of the game. Update the game to load it.',
+  unknown: 'That save has a version this game does not recognise.',
+};
+
+/**
+ * Accepts an exported text save (base64) or a save file (plain JSON).
+ * Old versions go through `migrate`, the same path as a stored save.
+ */
+export function decodeSave(text: string): DecodeResult {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: 'Paste a save first.' };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(trimmed.startsWith('{') ? trimmed : decodeURIComponent(escape(atob(trimmed))));
+  } catch {
+    return { ok: false, error: 'That is not a save: it could not be decoded.' };
+  }
+  const migrated = migrate(raw);
+  return migrated.ok ? migrated : { ok: false, error: DECODE_ERRORS[migrated.reason] };
+}
+
+/** Pretty JSON for the `.json` download. `decodeSave` reads it back. */
+export function exportSaveFile(state: GameState): string {
+  return JSON.stringify(state, null, 2);
+}
+
 /** Same migrate-and-validate path as a stored save. A bad paste does not touch storage. */
 export function importSave(text: string): GameState | null {
-  try {
-    const raw: unknown = JSON.parse(decodeURIComponent(escape(atob(text.trim()))));
-    const migrated = migrate(raw);
-    return migrated.ok ? migrated.state : null;
-  } catch {
-    return null;
-  }
+  const decoded = decodeSave(text);
+  return decoded.ok ? decoded.state : null;
 }

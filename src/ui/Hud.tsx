@@ -27,14 +27,12 @@ export function Hud({
   quality,
   onTactical,
   onQuality,
-  onMenu,
 }: {
   tactical: boolean;
   autoTactical: boolean;
   quality: 'high' | 'low';
   onTactical: () => void;
   onQuality: () => void;
-  onMenu: () => void;
 }) {
   const s = useGame();
   const c = s.carrier;
@@ -136,7 +134,6 @@ export function Hud({
           <button onClick={onQuality} title="Low quality turns off bloom and caps resolution">
             {quality === 'high' ? 'HQ' : 'LQ'}
           </button>
-          <button onClick={onMenu}>☰</button>
         </div>
       </div>
       <Alerts />

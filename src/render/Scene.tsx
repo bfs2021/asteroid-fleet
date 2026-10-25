@@ -40,6 +40,7 @@ function heading(id: number, cur: Vec3): THREE.Vector3 {
 export interface ViewOptions {
   tactical: boolean;
   quality: 'high' | 'low';
+  bloom: boolean;
   onAutoTactical: (on: boolean) => void;
 }
 
@@ -546,7 +547,7 @@ function CameraRig({
   );
 }
 
-export function Scene({ tactical, quality, onAutoTactical }: ViewOptions) {
+export function Scene({ tactical, quality, bloom, onAutoTactical }: ViewOptions) {
   const [auto, setAuto] = useState(false);
   const onAuto = (on: boolean) => {
     setAuto(on);
@@ -574,7 +575,12 @@ export function Scene({ tactical, quality, onAutoTactical }: ViewOptions) {
       <CameraRig tactical={tactical} onAutoTactical={onAuto} />
       {quality === 'high' && (
         <EffectComposer multisampling={0}>
-          <Bloom mipmapBlur intensity={1.1} luminanceThreshold={1} luminanceSmoothing={0.2} />
+          <Bloom
+            mipmapBlur
+            intensity={bloom ? 1.1 : 0}
+            luminanceThreshold={1}
+            luminanceSmoothing={0.2}
+          />
           <Vignette eskil={false} offset={0.2} darkness={0.7} />
         </EffectComposer>
       )}

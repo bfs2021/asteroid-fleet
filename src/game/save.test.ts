@@ -8,7 +8,9 @@ import {
   SAVE_BACKUP_NOTICE,
   SAVE_KEY,
   allowSaveOverwrite,
+  decodeSave,
   exportSave,
+  exportSaveFile,
   importSave,
   loadGame,
   readBackups,
@@ -370,5 +372,45 @@ describe('loadGame', () => {
     expect(mem.idb.has(SAVE_BACKUP_KEY)).toBe(false);
     expect(local.has(SAVE_BACKUP_KEY)).toBe(false);
     expect(saveOverwriteBlocked()).toBe(false);
+  });
+});
+
+function decodeError(text: string): string | null {
+  const result = decodeSave(text);
+  return result.ok ? null : result.error;
+}
+
+describe('decodeSave', () => {
+  it('gives the same state from a text export and a file export', () => {
+    const state = newGame(7);
+    state.credits = 987;
+    state.storm.timer = 3;
+    const fromText = decodeSave(exportSave(state));
+    const fromFile = decodeSave(exportSaveFile(state));
+    expect(fromText.ok && fromFile.ok).toBe(true);
+    if (!fromText.ok || !fromFile.ok) return;
+    expect(fromFile.state).toEqual(fromText.state);
+    expect(fromText.state.credits).toBe(987);
+    expect(fromText.state.storm.timer).toBe(3);
+    expect(fromText.state.wave.timer).toBe(state.wave.timer);
+    expect(JSON.parse(exportSaveFile(fromFile.state))).toEqual(JSON.parse(exportSaveFile(state)));
+  });
+
+  it('migrates an old save file instead of rejecting it', () => {
+    expect(decodeSave(JSON.stringify(saveV1))).toMatchObject({
+      ok: true,
+      state: { version: SAVE_VERSION },
+    });
+  });
+
+  it('explains each kind of bad import', () => {
+    const error = decodeError;
+    expect(error('   ')).toMatch(/paste/i);
+    expect(error('%%%not base64')).toMatch(/could not be decoded/);
+    expect(error('{"version":1,')).toMatch(/could not be decoded/);
+    expect(error(JSON.stringify({ version: SAVE_VERSION + 1 }))).toMatch(/newer version/);
+    expect(error(JSON.stringify({ version: 'x' }))).toMatch(/does not recognise/);
+    expect(error(encodeRaw({ version: SAVE_VERSION, ships: [] }))).toMatch(/damaged/);
+    expect(error(encodeRaw([1, 2]))).toMatch(/damaged/);
   });
 });

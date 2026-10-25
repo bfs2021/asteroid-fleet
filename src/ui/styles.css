@@ -586,6 +586,22 @@ select.inherit {
   border-radius: 8px;
   z-index: 5;
 }
+.save-notice {
+  position: absolute;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  z-index: 8;
+  width: min(520px, calc(100% - 24px));
+  background: #2a220f;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
 .legend {
   position: absolute;
   right: 10px;

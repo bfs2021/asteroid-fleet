@@ -4,7 +4,7 @@ import { DT } from '../sim/config';
 import { newGame } from '../sim/state';
 import { step } from '../sim/tick';
 import type { GameState, Vec3 } from '../sim/types';
-import { loadGame, saveGame } from './save';
+import { allowSaveOverwrite, loadGame, saveGame, saveOverwriteBlocked } from './save';
 
 const TICK_MS = DT * 1000;
 const MAX_CATCHUP_TICKS = 600; // a minute of sim; longer gaps go through offline settlement
@@ -24,6 +24,8 @@ class Engine {
   paused = false;
   offline: OfflineReport | null = null;
   toast: { text: string; at: number } | null = null;
+  /** Set when the stored save was backed up instead of loaded. Autosave stays off. */
+  saveNotice: string | null = null;
   loaded = false;
 
   private version = 0;
@@ -36,10 +38,12 @@ class Engine {
 
   async init() {
     const saved = await loadGame();
-    if (saved) {
-      this.state = saved;
-      const report = settleOffline(this.state, (Date.now() - saved.savedAt) / 1000);
+    if (saved.ok) {
+      this.state = saved.state;
+      const report = settleOffline(this.state, (Date.now() - saved.state.savedAt) / 1000);
       if (report) this.offline = report;
+    } else if (saved.reason !== 'empty') {
+      this.saveNotice = saved.notice;
     }
     this.loaded = true;
     this.snapshot();
@@ -116,6 +120,8 @@ class Engine {
 
   replace(state: GameState) {
     this.state = state;
+    this.saveNotice = null;
+    allowSaveOverwrite();
     this.snapshot();
     this.save();
     this.emit();
@@ -140,9 +146,11 @@ class Engine {
     this.emit();
   }
 
-  save() {
+  save(): boolean {
+    if (saveOverwriteBlocked()) return false;
     this.state.savedAt = Date.now();
     void saveGame(this.state);
+    return true;
   }
 
   emit() {

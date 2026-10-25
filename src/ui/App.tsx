@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { engine, useGame } from '../game/engine';
-import { exportSave, importSave } from '../game/save';
+import { SAVE_BACKUP_NOTICE, exportSave, importSave, saveOverwriteBlocked } from '../game/save';
 import { Scene } from '../render/Scene';
 import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
@@ -107,8 +107,8 @@ function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) 
           <button onClick={onHelp}>How to play</button>
           <button
             onClick={() => {
-              engine.save();
-              setMsg('Saved.');
+              if (engine.save()) setMsg('Saved.');
+              else setMsg(`${SAVE_BACKUP_NOTICE} It was not overwritten.`);
             }}
           >
             Save now
@@ -127,7 +127,10 @@ function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) 
           </button>
           <button
             onClick={() => {
-              if (confirm('Wipe everything, including research?')) {
+              const question = saveOverwriteBlocked()
+                ? 'Start a new game? The unreadable save stays in its backup, and the primary slot will be replaced.'
+                : 'Wipe everything, including research?';
+              if (confirm(question)) {
                 engine.reset();
                 onClose();
               }
@@ -165,6 +168,16 @@ function Offline() {
         </p>
         <button onClick={() => engine.dismissOffline()}>Resume</button>
       </div>
+    </div>
+  );
+}
+
+function SaveNotice() {
+  useGame();
+  if (!engine.saveNotice) return null;
+  return (
+    <div className="save-notice" role="alert">
+      {engine.saveNotice} Automatic saving is paused so that data is left untouched.
     </div>
   );
 }
@@ -243,6 +256,7 @@ export function App() {
           Pirate
         </span>
       </div>
+      <SaveNotice />
       <Toast />
       <Offline />
       {menu && (

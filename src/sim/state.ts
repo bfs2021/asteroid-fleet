@@ -23,6 +23,7 @@ import type {
   Vec3,
 } from './types';
 
+/** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
 export const SAVE_VERSION = 1;
 
 const NAMES = [

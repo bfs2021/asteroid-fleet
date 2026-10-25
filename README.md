@@ -40,6 +40,18 @@ CI runs on every pull request and on pushes to `main`, on Node 22 with pnpm 12. 
 3. **Reserves offline**: reserve ships keep rebuilding on their cooldown while you are away.
 4. **Rule depth**: fixed rule cards with one parameter each, as a first step before building blocks.
 
+## Save migrations
+
+Saves are JSON documents stamped with `SAVE_VERSION` (`src/sim/state.ts`). On load, and again on import, `migrate()` (`src/game/migrate.ts`) brings an older save up to that version. It runs one step per version, in order: `migrations[n]` rewrites a version `n` save into version `n + 1`, then the next step runs, until `SAVE_VERSION`.
+
+Every save schema change needs all three of these:
+
+1. Bump `SAVE_VERSION`.
+2. Add the `migrations[n]` step that upgrades the previous version to the new one.
+3. Check in a fixture of the previous version under `src/game/fixtures/` and a test that loads it and migrates it to the current version. `src/game/fixtures/save-v1.json` is the v1 fixture.
+
+A save that is corrupt, from a newer version than this build, or otherwise unknown is not deleted and not overwritten. The raw text is copied to the backup key `asteroid-fleet-save-backup` in both IndexedDB and the localStorage fallback (the same pair of stores as the primary key `asteroid-fleet-save`). The game shows "Your save could not be loaded and was backed up." and pauses automatic saving so the original stays put. A hard reset or a successful import may reuse the primary slot; the backup key is left alone. A bad import is rejected and does not write either key.
+
 ## Layout
 
 - `src/sim/`: deterministic simulation (seeded RNG, fixed 10 Hz tick), pure TypeScript with no React or three.js. `step()` in `tick.ts` is the whole game loop; `actions.ts` holds every player command.

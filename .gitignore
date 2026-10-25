@@ -4,3 +4,11 @@ dist
 .DS_Store
 *.tsbuildinfo
 .worktrees/
+
+
+coverage
+coverage/
+
+.vscode/
+.claude/
+

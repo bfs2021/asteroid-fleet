@@ -10,22 +10,24 @@ npm run dev       # http://localhost:5173
 npm test          # simulation tests
 npm run build     # typecheck + production build into dist/
 npm run balance   # 2-hour headless economy run, prints income every 10 min
+npm run lint      # oxlint, type-aware via tsgolint (works with TypeScript 7)
+npm run format    # oxfmt; format:check verifies without writing
 ```
 
 ## What is in this first playable slice
 
-| Concept area | Status |
-| --- | --- |
-| Logistics chain drone → barge → hauler → carrier refinery | Playable. Barges park at rich clusters as depots; the Carrier tab shows the throughput links and the current bottleneck. |
-| Hangars as the board | Slot sizes (drone 1, fighter/hauler 2, harvester 3, barge 4), drag-and-drop between slots, launch order per hangar, launch bay / dry dock / cargo bay types, repair-drone adjacency synergy. |
-| Stances | Fleet → ship type → hangar scopes, most specific wins. Engagement (aggressive, defensive, escort, passive), under fire (stand, retreat at X % hull, unload first), mining (greedy, safe). |
-| Rules | Fixed rule cards with on/off and a parameter: fighters escort on wave, barge calls hauler above X %, barge falls back, drones unload at barges beyond X, haulers park, recall on low shields, keep warp energy in reserve. |
-| Zones | 10 systems across starter, frontier and deep space, two with gas giants. Pirate waves scale with distance and cargo heat; debris and radiation hazards; solar storms. |
-| Carrier | One energy pool (solar, later fusion from H2) feeding refinery, shields, warp and drift; power modes; sublight "follow richest cluster"; warp with charge time, automatic recall, and losses for ships left outside. |
-| Prestige & research | RP = ⌊√(ore value delivered ÷ 10,000)⌋ × furthest tier. Hybrid tree: global branches plus one small branch per ship class, loss-buffer reserves. |
-| Offline | Settled from timestamps at 50 % of the recent income, no pirate waves, reserves keep rebuilding. |
-| Save | IndexedDB with localStorage fallback, text export/import from the ☰ menu. |
-| Rendering | React Three Fiber, one instanced mesh per ship class, instanced asteroids, line-segment beams, bloom, nebula skybox, tactical sensor view (toggle or zoom far out), low-quality mode. |
+| Concept area                                              | Status                                                                                                                                                                                                                     |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Logistics chain drone → barge → hauler → carrier refinery | Playable. Barges park at rich clusters as depots; the Carrier tab shows the throughput links and the current bottleneck.                                                                                                   |
+| Hangars as the board                                      | Slot sizes (drone 1, fighter/hauler 2, harvester 3, barge 4), drag-and-drop between slots, launch order per hangar, launch bay / dry dock / cargo bay types, repair-drone adjacency synergy.                               |
+| Stances                                                   | Fleet → ship type → hangar scopes, most specific wins. Engagement (aggressive, defensive, escort, passive), under fire (stand, retreat at X % hull, unload first), mining (greedy, safe).                                  |
+| Rules                                                     | Fixed rule cards with on/off and a parameter: fighters escort on wave, barge calls hauler above X %, barge falls back, drones unload at barges beyond X, haulers park, recall on low shields, keep warp energy in reserve. |
+| Zones                                                     | 10 systems across starter, frontier and deep space, two with gas giants. Pirate waves scale with distance and cargo heat; debris and radiation hazards; solar storms.                                                      |
+| Carrier                                                   | One energy pool (solar, later fusion from H2) feeding refinery, shields, warp and drift; power modes; sublight "follow richest cluster"; warp with charge time, automatic recall, and losses for ships left outside.       |
+| Prestige & research                                       | RP = ⌊√(ore value delivered ÷ 10,000)⌋ × furthest tier. Hybrid tree: global branches plus one small branch per ship class, loss-buffer reserves.                                                                           |
+| Offline                                                   | Settled from timestamps at 50 % of the recent income, no pirate waves, reserves keep rebuilding.                                                                                                                           |
+| Save                                                      | IndexedDB with localStorage fallback, text export/import from the ☰ menu.                                                                                                                                                 |
+| Rendering                                                 | React Three Fiber, one instanced mesh per ship class, instanced asteroids, line-segment beams, bloom, nebula skybox, tactical sensor view (toggle or zoom far out), low-quality mode.                                      |
 
 ## Choices made for the open questions
 

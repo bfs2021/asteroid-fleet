@@ -1,7 +1,15 @@
 // Plain, JSON-serialisable game state. The whole GameState is what gets saved.
 
 export type ShipClass = 'drone' | 'barge' | 'hauler' | 'fighter' | 'scout' | 'repair' | 'harvester';
-export const SHIP_CLASSES: ShipClass[] = ['drone', 'barge', 'hauler', 'fighter', 'scout', 'repair', 'harvester'];
+export const SHIP_CLASSES: ShipClass[] = [
+  'drone',
+  'barge',
+  'hauler',
+  'fighter',
+  'scout',
+  'repair',
+  'harvester',
+];
 
 export type Engagement = 'aggressive' | 'defensive' | 'escort' | 'passive';
 export type UnderFire = 'stand' | 'retreatHull' | 'retreatCargo';

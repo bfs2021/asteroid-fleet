@@ -8,7 +8,14 @@ import { engine, lerpPos, useGame } from '../game/engine';
 import { COVER_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
 import { SHIP_CLASSES, type ShipClass, type Vec3 } from '../sim/types';
-import { GAS_FRAG, GAS_VERT, NEBULA_FRAG, NEBULA_VERT, asteroidGeometry, shipGeometry } from './geometry';
+import {
+  GAS_FRAG,
+  GAS_VERT,
+  NEBULA_FRAG,
+  NEBULA_VERT,
+  asteroidGeometry,
+  shipGeometry,
+} from './geometry';
 
 const MAX_PER_CLASS = 400;
 const dummy = new THREE.Object3D();
@@ -41,7 +48,10 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
   const glow = useRef<THREE.InstancedMesh>(null);
   const geo = useMemo(() => shipGeometry(cls), [cls]);
   const color = cls === 'pirate' ? '#ff3b3b' : SHIP_STATS[cls].color;
-  const glowColor = useMemo(() => new THREE.Color(cls === 'pirate' ? '#ff4020' : '#6fc8ff').multiplyScalar(4), [cls]);
+  const glowColor = useMemo(
+    () => new THREE.Color(cls === 'pirate' ? '#ff4020' : '#6fc8ff').multiplyScalar(4),
+    [cls],
+  );
   const len = cls === 'barge' ? 2.4 : cls === 'hauler' || cls === 'harvester' ? 1.6 : 1;
 
   useFrame(() => {
@@ -80,7 +90,14 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
   return (
     <>
       <instancedMesh ref={mesh} args={[geo, undefined, MAX_PER_CLASS]} frustumCulled={false}>
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.35} metalness={0.4} roughness={0.45} flatShading />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.35}
+          metalness={0.4}
+          roughness={0.45}
+          flatShading
+        />
       </instancedMesh>
       <instancedMesh ref={glow} args={[undefined, undefined, MAX_PER_CLASS]} frustumCulled={false}>
         <sphereGeometry args={[1, 8, 6]} />
@@ -90,7 +107,13 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
   );
 }
 
-const ORE_COLORS = [new THREE.Color('#8b7d6b'), new THREE.Color('#7f8fa3'), new THREE.Color('#5fb3c9'), new THREE.Color('#b77be0'), new THREE.Color('#ff7df0')];
+const ORE_COLORS = [
+  new THREE.Color('#8b7d6b'),
+  new THREE.Color('#7f8fa3'),
+  new THREE.Color('#5fb3c9'),
+  new THREE.Color('#b77be0'),
+  new THREE.Color('#ff7df0'),
+];
 
 function Asteroids() {
   const mesh = useRef<THREE.InstancedMesh>(null);
@@ -196,7 +219,12 @@ function Explosions() {
   return (
     <instancedMesh ref={mesh} args={[undefined, undefined, 128]} frustumCulled={false}>
       <icosahedronGeometry args={[1, 1]} />
-      <meshBasicMaterial color={new THREE.Color('#ffaa55').multiplyScalar(3)} toneMapped={false} transparent opacity={0.8} />
+      <meshBasicMaterial
+        color={new THREE.Color('#ffaa55').multiplyScalar(3)}
+        toneMapped={false}
+        transparent
+        opacity={0.8}
+      />
     </instancedMesh>
   );
 }
@@ -210,7 +238,11 @@ function Carrier() {
     const a = engine.alpha();
     const p = engine.prevCarrier;
     const c = s.carrier.pos;
-    group.current?.position.set(p.x + (c.x - p.x) * a, p.y + (c.y - p.y) * a, p.z + (c.z - p.z) * a);
+    group.current?.position.set(
+      p.x + (c.x - p.x) * a,
+      p.y + (c.y - p.y) * a,
+      p.z + (c.z - p.z) * a,
+    );
     if (group.current && s.carrier.target) {
       const t = s.carrier.target;
       const ang = Math.atan2(t.x - c.x, t.z - c.z);
@@ -253,22 +285,37 @@ function Carrier() {
       {[-3.4, 3.4].map((x) => (
         <mesh key={'bay' + x} position={[x, -0.4, 7.6]}>
           <boxGeometry args={[1.2, 1.2, 0.2]} />
-          <meshBasicMaterial color={new THREE.Color('#ffd27a').multiplyScalar(3)} toneMapped={false} />
+          <meshBasicMaterial
+            color={new THREE.Color('#ffd27a').multiplyScalar(3)}
+            toneMapped={false}
+          />
         </mesh>
       ))}
       {[-1.4, 0, 1.4].map((x) => (
         <mesh key={'eng' + x} position={[x, 0, -10.3]}>
           <cylinderGeometry args={[0.6, 0.8, 0.6, 8]} />
-          <meshBasicMaterial color={new THREE.Color('#58b8ff').multiplyScalar(5)} toneMapped={false} />
+          <meshBasicMaterial
+            color={new THREE.Color('#58b8ff').multiplyScalar(5)}
+            toneMapped={false}
+          />
         </mesh>
       ))}
       <mesh ref={shield}>
         <sphereGeometry args={[14, 32, 16]} />
-        <meshBasicMaterial color="#5ab4ff" transparent opacity={0.04} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial
+          color="#5ab4ff"
+          transparent
+          opacity={0.04}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
       </mesh>
       <mesh ref={warpRing} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[12, 0.25, 8, 64]} />
-        <meshBasicMaterial color={new THREE.Color('#9b7bff').multiplyScalar(4)} toneMapped={false} />
+        <meshBasicMaterial
+          color={new THREE.Color('#9b7bff').multiplyScalar(4)}
+          toneMapped={false}
+        />
       </mesh>
     </group>
   );
@@ -282,11 +329,21 @@ function Hazards() {
         <group key={`${s.systemId}-${i}`} position={[h.pos.x, h.pos.y, h.pos.z]}>
           <mesh>
             <sphereGeometry args={[h.radius, 24, 16]} />
-            <meshBasicMaterial color={h.kind === 'debris' ? '#ffb347' : '#b6ff4a'} transparent opacity={0.06} depthWrite={false} />
+            <meshBasicMaterial
+              color={h.kind === 'debris' ? '#ffb347' : '#b6ff4a'}
+              transparent
+              opacity={0.06}
+              depthWrite={false}
+            />
           </mesh>
           <mesh>
             <sphereGeometry args={[h.radius, 12, 8]} />
-            <meshBasicMaterial color={h.kind === 'debris' ? '#ffb347' : '#b6ff4a'} wireframe transparent opacity={0.15} />
+            <meshBasicMaterial
+              color={h.kind === 'debris' ? '#ffb347' : '#b6ff4a'}
+              wireframe
+              transparent
+              opacity={0.15}
+            />
           </mesh>
         </group>
       ))}
@@ -298,7 +355,12 @@ function GasGiant() {
   const s = useGame();
   const sys = s.systems[s.systemId];
   const mat = useMemo(
-    () => new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexShader: GAS_VERT, fragmentShader: GAS_FRAG }),
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: GAS_VERT,
+        fragmentShader: GAS_FRAG,
+      }),
     [],
   );
   useFrame((st) => {
@@ -313,7 +375,13 @@ function GasGiant() {
       </mesh>
       <mesh rotation={[Math.PI / 2.3, 0, 0]}>
         <ringGeometry args={[32, 44, 64]} />
-        <meshBasicMaterial color="#d6b48a" transparent opacity={0.25} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial
+          color="#d6b48a"
+          transparent
+          opacity={0.25}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
       </mesh>
     </group>
   );
@@ -352,7 +420,10 @@ function Sky() {
       <Stars radius={500} depth={200} count={4000} factor={6} fade speed={0.3} />
       <mesh position={[400, 150, -500]}>
         <sphereGeometry args={[18 + bright * 10, 24, 16]} />
-        <meshBasicMaterial color={new THREE.Color('#fff2c8').multiplyScalar(2 + bright * 2)} toneMapped={false} />
+        <meshBasicMaterial
+          color={new THREE.Color('#fff2c8').multiplyScalar(2 + bright * 2)}
+          toneMapped={false}
+        />
       </mesh>
       <directionalLight position={[400, 150, -500]} intensity={1.2 + bright} color="#fff1dc" />
       <ambientLight intensity={0.55} color="#8fa8ff" />
@@ -363,7 +434,9 @@ function Sky() {
 }
 
 const ICON_COLORS: Record<string, THREE.Color> = {
-  ...Object.fromEntries(SHIP_CLASSES.map((c) => [c, new THREE.Color(SHIP_STATS[c].color).multiplyScalar(1.6)])),
+  ...Object.fromEntries(
+    SHIP_CLASSES.map((c) => [c, new THREE.Color(SHIP_STATS[c].color).multiplyScalar(1.6)]),
+  ),
   pirate: new THREE.Color('#ff3030').multiplyScalar(2),
   carrier: new THREE.Color('#ffffff').multiplyScalar(2),
 };
@@ -389,7 +462,9 @@ function Tactical({ on }: { on: boolean }) {
       n++;
     };
     put(s.carrier.pos, ICON_COLORS.carrier);
-    for (const sh of s.ships) if (sh.mode !== 'docked' && n < 2048) put(lerpPos(sh.id, sh.pos, a, tmp), ICON_COLORS[sh.cls]);
+    for (const sh of s.ships)
+      if (sh.mode !== 'docked' && n < 2048)
+        put(lerpPos(sh.id, sh.pos, a, tmp), ICON_COLORS[sh.cls]);
     for (const p of s.pirates) if (n < 2048) put(lerpPos(p.id, p.pos, a, tmp), ICON_COLORS.pirate);
     geo.setDrawRange(0, n);
     pos.needsUpdate = true;
@@ -417,7 +492,13 @@ function Tactical({ on }: { on: boolean }) {
   );
 }
 
-function CameraRig({ tactical, onAutoTactical }: { tactical: boolean; onAutoTactical: (on: boolean) => void }) {
+function CameraRig({
+  tactical,
+  onAutoTactical,
+}: {
+  tactical: boolean;
+  onAutoTactical: (on: boolean) => void;
+}) {
   const controls = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
   const last = useRef(new THREE.Vector3());
@@ -453,7 +534,16 @@ function CameraRig({ tactical, onAutoTactical }: { tactical: boolean; onAutoTact
     }
     c.update();
   });
-  return <OrbitControls ref={controls} makeDefault enableDamping dampingFactor={0.08} minDistance={8} maxDistance={360} />;
+  return (
+    <OrbitControls
+      ref={controls}
+      makeDefault
+      enableDamping
+      dampingFactor={0.08}
+      minDistance={8}
+      maxDistance={360}
+    />
+  );
 }
 
 export function Scene({ tactical, quality, onAutoTactical }: ViewOptions) {

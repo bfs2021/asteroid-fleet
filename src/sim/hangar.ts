@@ -3,7 +3,7 @@ import { lvl } from './research';
 import type { GameState, Hangar, ShipClass } from './types';
 
 export function occupancy(s: GameState, h: Hangar): (number | null)[] {
-  const occ: (number | null)[] = new Array(h.slots).fill(null);
+  const occ: (number | null)[] = Array.from({ length: h.slots }, () => null);
   for (const it of h.items) {
     const ship = s.ships.find((sh) => sh.id === it.shipId);
     if (!ship) continue;
@@ -13,11 +13,18 @@ export function occupancy(s: GameState, h: Hangar): (number | null)[] {
   return occ;
 }
 
-export function fits(s: GameState, h: Hangar, cls: ShipClass, start: number, ignoreShip = -1): boolean {
+export function fits(
+  s: GameState,
+  h: Hangar,
+  cls: ShipClass,
+  start: number,
+  ignoreShip = -1,
+): boolean {
   const size = SHIP_STATS[cls].slots;
   if (start < 0 || start + size > h.slots) return false;
   const occ = occupancy(s, h);
-  for (let i = start; i < start + size; i++) if (occ[i] !== null && occ[i] !== ignoreShip) return false;
+  for (let i = start; i < start + size; i++)
+    if (occ[i] !== null && occ[i] !== ignoreShip) return false;
   return true;
 }
 
@@ -27,8 +34,14 @@ export function firstFit(s: GameState, h: Hangar, cls: ShipClass): number {
 }
 
 /** Find a hangar + slot for a new ship, preferring `preferred`. */
-export function findSpace(s: GameState, cls: ShipClass, preferred?: number): { hangar: Hangar; start: number } | null {
-  const order = [...s.hangars].sort((a, b) => (a.id === preferred ? -1 : b.id === preferred ? 1 : 0));
+export function findSpace(
+  s: GameState,
+  cls: ShipClass,
+  preferred?: number,
+): { hangar: Hangar; start: number } | null {
+  const order = [...s.hangars].sort((a, b) =>
+    a.id === preferred ? -1 : b.id === preferred ? 1 : 0,
+  );
   for (const h of order) {
     const start = firstFit(s, h, cls);
     if (start >= 0) return { hangar: h, start };
@@ -64,11 +77,14 @@ export function dockRepairRate(s: GameState, shipId: number): number {
   let rate = HANGAR_TYPES[h.type].repairRate;
   const ship = s.ships.find((x) => x.id === shipId);
   if (ship && (ship.cls === 'fighter' || ship.cls === 'barge')) {
-    const adj = neighbours(s, h, shipId).some((id) => s.ships.find((x) => x.id === id)?.cls === 'repair');
+    const adj = neighbours(s, h, shipId).some(
+      (id) => s.ships.find((x) => x.id === id)?.cls === 'repair',
+    );
     if (adj) rate *= 3;
   }
   if (ship?.cls === 'drone' && lvl(s, 'bargeBay') > 0) {
-    if (neighbours(s, h, shipId).some((id) => s.ships.find((x) => x.id === id)?.cls === 'barge')) rate *= 2;
+    if (neighbours(s, h, shipId).some((id) => s.ships.find((x) => x.id === id)?.cls === 'barge'))
+      rate *= 2;
   }
   return rate * (1 + 0.3 * lvl(s, 'repair'));
 }

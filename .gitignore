@@ -12,3 +12,6 @@ coverage/
 .vscode/
 .claude/
 
+
+test-results/
+playwright-report/

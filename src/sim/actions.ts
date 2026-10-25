@@ -26,7 +26,12 @@ export type Command =
   | { type: 'buyHangar'; hangarType: HangarType }
   | { type: 'retrofitHangar'; hangarId: number; hangarType: HangarType }
   | { type: 'setLaunchOrder'; hangarId: number; order: ShipClass[] }
-  | { type: 'setStance'; scope: 'fleet' | ShipClass | number; patch: Partial<Stance> | null; key?: keyof Stance }
+  | {
+      type: 'setStance';
+      scope: 'fleet' | ShipClass | number;
+      patch: Partial<Stance> | null;
+      key?: keyof Stance;
+    }
   | { type: 'setRule'; id: RuleId; enabled?: boolean; param?: number }
   | { type: 'warp'; systemId: number }
   | { type: 'cancelWarp' }
@@ -78,7 +83,8 @@ export function apply(s: GameState, c: Command): string | null {
     case 'buyHangar': {
       const cost = NEW_HANGAR_COST(s.hangars.length);
       if (s.hangars.length >= 5) return 'The carrier has no room for more hangars';
-      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2) return 'Dry docks unlock in the frontier';
+      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2)
+        return 'Dry docks unlock in the frontier';
       if (s.credits < cost) return 'Not enough credits';
       s.credits -= cost;
       const id = Math.max(...s.hangars.map((h) => h.id)) + 1;
@@ -97,7 +103,8 @@ export function apply(s: GameState, c: Command): string | null {
     case 'retrofitHangar': {
       const h = s.hangars.find((x) => x.id === c.hangarId);
       if (!h || h.type === c.hangarType) return null;
-      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2) return 'Dry docks unlock in the frontier';
+      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2)
+        return 'Dry docks unlock in the frontier';
       if (s.credits < RETROFIT_COST) return 'Not enough credits';
       s.credits -= RETROFIT_COST;
       h.type = c.hangarType;
@@ -118,7 +125,7 @@ export function apply(s: GameState, c: Command): string | null {
       if (!target) return 'No such scope';
       if (c.patch === null) {
         // clear one key (back to inherited); never clear the fleet default
-        if (c.scope !== 'fleet' && c.key) delete (target as Partial<Stance>)[c.key];
+        if (c.scope !== 'fleet' && c.key) delete target[c.key];
         return null;
       }
       Object.assign(target, c.patch);
@@ -147,7 +154,10 @@ export function apply(s: GameState, c: Command): string | null {
       if (!s.warp) return null;
       const from = s.systems[s.systemId];
       const to = s.systems[s.warp.targetSystem];
-      s.carrier.energy = Math.min(maxEnergy(s), s.carrier.energy + warpCost(from.distance, to.distance) * 0.75);
+      s.carrier.energy = Math.min(
+        maxEnergy(s),
+        s.carrier.energy + warpCost(from.distance, to.distance) * 0.75,
+      );
       s.warp = null;
       log(s, 'Jump cancelled.', 'info');
       return null;
@@ -188,7 +198,10 @@ export function prestige(s: GameState): GameState {
     unlocked: [...s.unlocked],
     unlockedRules: [...s.unlockedRules],
     discovered: s.systems.filter((x) => x.discovered).map((x) => x.id),
-    lifetime: { prestiges: s.lifetime.prestiges + 1, researchEarned: s.lifetime.researchEarned + rp },
+    lifetime: {
+      prestiges: s.lifetime.prestiges + 1,
+      researchEarned: s.lifetime.researchEarned + rp,
+    },
     doctrine: structuredClone(s.doctrine),
     rules: structuredClone(s.rules),
   });
@@ -232,6 +245,10 @@ export function settleOffline(s: GameState, elapsedS: number): OfflineReport | n
     const n = Math.min(Math.max(0, min - have), Math.floor(t / cooldown));
     for (let i = 0; i < n; i++) if (createShip(s, cls)) rebuilt++;
   }
-  log(s, `Welcome back. The fleet earned ${Math.round(credits)} credits while you were away.`, 'good');
+  log(
+    s,
+    `Welcome back. The fleet earned ${Math.round(credits)} credits while you were away.`,
+    'good',
+  );
   return { seconds: t, credits, rebuilt };
 }

@@ -41,7 +41,9 @@ function LogPanel() {
     <>
       <h3>This run</h3>
       <p className="hint">
-        {fmt(st.oreValueDelivered)} ore value delivered · {fmt(st.creditsEarned)} credits earned · {st.piratesKilled} pirates destroyed · {st.shipsLost} ships lost · prestige ×{s.lifetime.prestiges}
+        {fmt(st.oreValueDelivered)} ore value delivered · {fmt(st.creditsEarned)} credits earned ·{' '}
+        {st.piratesKilled} pirates destroyed · {st.shipsLost} ships lost · prestige ×
+        {s.lifetime.prestiges}
       </p>
       <h3>Event log</h3>
       <div className="log">
@@ -64,22 +66,30 @@ function Help({ onClose }: { onClose: () => void }) {
         <p>Your mining carrier's fleet works on its own. You shape how it behaves:</p>
         <ul>
           <li>
-            <b>Hangars</b> are the board: buy ships into slots (drone 1, fighter 2, barge 4). Neighbours can trigger synergies, and each hangar has a launch order.
+            <b>Hangars</b> are the board: buy ships into slots (drone 1, fighter 2, barge 4).
+            Neighbours can trigger synergies, and each hangar has a launch order.
           </li>
           <li>
-            <b>Doctrine</b>: stances for the whole fleet, per ship type and per hangar, plus simple rules that fire on conditions.
+            <b>Doctrine</b>: stances for the whole fleet, per ship type and per hangar, plus simple
+            rules that fire on conditions.
           </li>
           <li>
-            <b>Logistics</b>: drones mine, barges park at rich clusters as depots, haulers shuttle ore home, the refinery turns ore into credits with energy. The slowest link sets your income.
+            <b>Logistics</b>: drones mine, barges park at rich clusters as depots, haulers shuttle
+            ore home, the refinery turns ore into credits with energy. The slowest link sets your
+            income.
           </li>
           <li>
-            <b>Carrier</b>: warp outward for richer ore and tougher pirates, or back to safety. Ships outside at jump time are lost for good.
+            <b>Carrier</b>: warp outward for richer ore and tougher pirates, or back to safety.
+            Ships outside at jump time are lost for good.
           </li>
           <li>
             <b>Research</b>: prestige resets the operation for research points that persist.
           </li>
         </ul>
-        <p className="hint">Drag to orbit, scroll to zoom, right-drag to pan. Zoom far out (or press Tactical) for the sensor view. The game saves itself and keeps working at reduced rate while you are away.</p>
+        <p className="hint">
+          Drag to orbit, scroll to zoom, right-drag to pan. Zoom far out (or press Tactical) for the
+          sensor view. The game saves itself and keeps working at reduced rate while you are away.
+        </p>
         <button onClick={onClose}>Take command</button>
       </div>
     </div>
@@ -126,7 +136,11 @@ function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) 
             Hard reset
           </button>
         </div>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Export fills this box; paste a save here to import." />
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Export fills this box; paste a save here to import."
+        />
         {msg && <p className="hint">{msg}</p>}
         <button onClick={onClose}>Close</button>
       </div>
@@ -146,8 +160,8 @@ function Offline() {
         <h2>Welcome back, admiral</h2>
         <p>
           You were away for {h ? `${h} h ` : ''}
-          {m} min. The fleet kept working the system safely at reduced rate and earned <b>{fmt(r.credits)} credits</b>.
-          {r.rebuilt > 0 && ` Reserves rebuilt ${r.rebuilt} ships.`}
+          {m} min. The fleet kept working the system safely at reduced rate and earned{' '}
+          <b>{fmt(r.credits)} credits</b>.{r.rebuilt > 0 && ` Reserves rebuilt ${r.rebuilt} ships.`}
         </p>
         <button onClick={() => engine.dismissOffline()}>Resume</button>
       </div>
@@ -158,6 +172,8 @@ function Offline() {
 function Toast() {
   useGame();
   const t = engine.toast;
+  // The engine re-renders every tick, so reading the clock here hides the toast on time.
+  // oxlint-disable-next-line react/purity
   if (!t || Date.now() - t.at > 2500) return null;
   return <div className="toast">{t.text}</div>;
 }

@@ -1,5 +1,15 @@
 import { engine, useGame } from '../game/engine';
-import { MAX_REFINERY, MINING_RATE, REFINE_ENERGY, REFINERY_COST, refineRate, SHIP_STATS, SOLAR_RATE, TIER_NAMES, warpCost } from '../sim/config';
+import {
+  MAX_REFINERY,
+  MINING_RATE,
+  REFINE_ENERGY,
+  REFINERY_COST,
+  refineRate,
+  SHIP_STATS,
+  SOLAR_RATE,
+  TIER_NAMES,
+  warpCost,
+} from '../sim/config';
 import { lvl } from '../sim/research';
 import { cargoCap } from '../sim/tick';
 import type { GameState } from '../sim/types';
@@ -12,8 +22,12 @@ function throughput(s: GameState) {
   const haulers = s.ships.filter((x) => x.cls === 'hauler').length;
   const mining = drones * MINING_RATE * (1 + 0.15 * lvl(s, 'yield')) * 0.45; // ~45 % of a cycle spent drilling
   const avgTrip = 30;
-  const droneTransport = (drones * cargoCap(s, 'drone')) / ((2 * (barges ? avgTrip * 0.35 : avgTrip)) / SHIP_STATS.drone.speed + 4);
-  const haulerTransport = barges ? (haulers * cargoCap(s, 'hauler')) / ((2 * avgTrip) / SHIP_STATS.hauler.speed + 3) : Infinity;
+  const droneTransport =
+    (drones * cargoCap(s, 'drone')) /
+    ((2 * (barges ? avgTrip * 0.35 : avgTrip)) / SHIP_STATS.drone.speed + 4);
+  const haulerTransport = barges
+    ? (haulers * cargoCap(s, 'hauler')) / ((2 * avgTrip) / SHIP_STATS.hauler.speed + 3)
+    : Infinity;
   const sys = s.systems[s.systemId];
   const solar = SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar'));
   const refinery = Math.min(refineRate(s.carrier.refinery), solar / REFINE_ENERGY);
@@ -51,8 +65,10 @@ export function CarrierPanel() {
 
       <h3>Power</h3>
       <p className="hint">
-        One energy pool for refinery, shields, warp and drift. Solar recharges it slowly ({(SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar'))).toFixed(1)}/s here)
-        {lvl(s, 'fusion') > 0 ? '; fusion burns H2 for much more.' : '.'} At zero, shields stay down and refining stops until it recharges.
+        One energy pool for refinery, shields, warp and drift. Solar recharges it slowly (
+        {(SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar'))).toFixed(1)}/s here)
+        {lvl(s, 'fusion') > 0 ? '; fusion burns H2 for much more.' : '.'} At zero, shields stay down
+        and refining stops until it recharges.
       </p>
       <div className="row">
         {(
@@ -62,7 +78,12 @@ export function CarrierPanel() {
             ['defense', 'Defense', 'Keep 50 % in reserve; fast shield regen'],
           ] as const
         ).map(([m, l, tip]) => (
-          <button key={m} className={s.powerMode === m ? 'on' : ''} onClick={() => engine.dispatch({ type: 'setPower', mode: m })} title={tip}>
+          <button
+            key={m}
+            className={s.powerMode === m ? 'on' : ''}
+            onClick={() => engine.dispatch({ type: 'setPower', mode: m })}
+            title={tip}
+          >
             {l}
           </button>
         ))}
@@ -73,24 +94,34 @@ export function CarrierPanel() {
         <span className="grow hint" style={{ margin: 0 }}>
           {refineRate(s.carrier.refinery).toFixed(0)} ore/s, {REFINE_ENERGY} energy per unit
         </span>
-        <button disabled={s.carrier.refinery >= MAX_REFINERY || s.credits < refCost} onClick={() => engine.dispatch({ type: 'upgradeRefinery' })}>
+        <button
+          disabled={s.carrier.refinery >= MAX_REFINERY || s.credits < refCost}
+          onClick={() => engine.dispatch({ type: 'upgradeRefinery' })}
+        >
           Upgrade · {fmt(refCost)} cr
         </button>
       </div>
 
       <h3>Sublight</h3>
       <div className="row">
-        <button className={s.carrier.stance === 'followRich' ? 'on' : ''} onClick={() => engine.dispatch({ type: 'setCarrierStance', stance: 'followRich' })}>
+        <button
+          className={s.carrier.stance === 'followRich' ? 'on' : ''}
+          onClick={() => engine.dispatch({ type: 'setCarrierStance', stance: 'followRich' })}
+        >
           Follow richest cluster
         </button>
-        <button className={s.carrier.stance === 'hold' ? 'on' : ''} onClick={() => engine.dispatch({ type: 'setCarrierStance', stance: 'hold' })}>
+        <button
+          className={s.carrier.stance === 'hold' ? 'on' : ''}
+          onClick={() => engine.dispatch({ type: 'setCarrierStance', stance: 'hold' })}
+        >
           Hold position
         </button>
       </div>
 
       <h3>Star map</h3>
       <p className="hint">
-        Warp costs energy and charges for a few seconds while the fleet is recalled. Ships still outside at jump time are lost. Pirates scale with distance and cargo heat.
+        Warp costs energy and charges for a few seconds while the fleet is recalled. Ships still
+        outside at jump time are lost. Pirates scale with distance and cargo heat.
       </p>
       {s.systems.map((o) => {
         const here = o.id === s.systemId;
@@ -100,7 +131,8 @@ export function CarrierPanel() {
             <span className={`tier t${o.tier}`}>{TIER_NAMES[o.tier]}</span>
             <div className="grow">
               <div>
-                <b>{o.discovered ? o.name : 'Uncharted'}</b> {o.gasGiant && o.discovered && <span title="Gas giant: H2 for fusion">🪐</span>}
+                <b>{o.discovered ? o.name : 'Uncharted'}</b>{' '}
+                {o.gasGiant && o.discovered && <span title="Gas giant: H2 for fusion">🪐</span>}
               </div>
               {o.discovered && (
                 <div className="hint" style={{ margin: 0 }}>

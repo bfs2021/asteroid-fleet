@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { engine, useGame } from '../game/engine';
 import { RETROFIT_COST, shipCost } from '../sim/actions';
-import { HANGAR_SLOT_COST, HANGAR_TYPES, MAX_HANGAR_SLOTS, NEW_HANGAR_COST, SHIP_STATS } from '../sim/config';
+import {
+  HANGAR_SLOT_COST,
+  HANGAR_TYPES,
+  MAX_HANGAR_SLOTS,
+  NEW_HANGAR_COST,
+  SHIP_STATS,
+} from '../sim/config';
 import { effectiveStance, stanceSource } from '../sim/doctrine';
 import { neighbours, occupancy } from '../sim/hangar';
 import { maxHull } from '../sim/state';
 import { cargoCap } from '../sim/tick';
-import { SHIP_CLASSES, type GameState, type Hangar, type HangarType, type Ship, type ShipClass } from '../sim/types';
+import {
+  SHIP_CLASSES,
+  type GameState,
+  type Hangar,
+  type HangarType,
+  type Ship,
+  type ShipClass,
+} from '../sim/types';
 import { fmt } from './Hud';
 
 const MODE_LABEL: Record<string, string> = {
@@ -34,12 +47,26 @@ const UNLOCK_HINT: Partial<Record<ShipClass, string>> = {
 
 function synergy(s: GameState, h: Hangar, ship: Ship): string | null {
   const adj = neighbours(s, h, ship.id).map((id) => s.ships.find((x) => x.id === id)?.cls);
-  if ((ship.cls === 'fighter' || ship.cls === 'barge') && adj.includes('repair')) return 'Repair drone adjacent: repairs 3× faster when docked';
-  if (ship.cls === 'repair' && (adj.includes('fighter') || adj.includes('barge'))) return 'Boosting the repairs of its neighbours';
+  if ((ship.cls === 'fighter' || ship.cls === 'barge') && adj.includes('repair'))
+    return 'Repair drone adjacent: repairs 3× faster when docked';
+  if (ship.cls === 'repair' && (adj.includes('fighter') || adj.includes('barge')))
+    return 'Boosting the repairs of its neighbours';
   return null;
 }
 
-function HangarBoard({ h, selected, onSelect, selShip, onShip }: { h: Hangar; selected: boolean; onSelect: () => void; selShip: number; onShip: (id: number) => void }) {
+function HangarBoard({
+  h,
+  selected,
+  onSelect,
+  selShip,
+  onShip,
+}: {
+  h: Hangar;
+  selected: boolean;
+  onSelect: () => void;
+  selShip: number;
+  onShip: (id: number) => void;
+}) {
   const s = useGame();
   const [over, setOver] = useState(-1);
   const occ = occupancy(s, h);
@@ -105,12 +132,21 @@ function HangarBoard({ h, selected, onSelect, selShip, onShip }: { h: Hangar; se
   };
   const used = occ.filter((x) => x !== null).length;
   return (
-    <div className={`hangar ${selected ? 'selected' : ''}`} onClick={(e) => e.target === e.currentTarget && onSelect()}>
+    <div
+      className={`hangar ${selected ? 'selected' : ''}`}
+      onClick={(e) => e.target === e.currentTarget && onSelect()}
+    >
       <div className="hangar-head">
         <span className="title">Hangar {h.id}</span>
         <select
           value={h.type}
-          onChange={(e) => engine.dispatch({ type: 'retrofitHangar', hangarId: h.id, hangarType: e.target.value as HangarType })}
+          onChange={(e) =>
+            engine.dispatch({
+              type: 'retrofitHangar',
+              hangarId: h.id,
+              hangarType: e.target.value as HangarType,
+            })
+          }
           title={`Retrofit for ${RETROFIT_COST} credits`}
         >
           {(Object.keys(HANGAR_TYPES) as HangarType[]).map((t) => (
@@ -120,7 +156,9 @@ function HangarBoard({ h, selected, onSelect, selShip, onShip }: { h: Hangar; se
           ))}
         </select>
         <span className="blurb grow">{def.blurb}</span>
-        <span className="blurb">{used}/{h.slots}</span>
+        <span className="blurb">
+          {used}/{h.slots}
+        </span>
         <button
           disabled={h.slots >= MAX_HANGAR_SLOTS || s.credits < HANGAR_SLOT_COST(h.slots)}
           onClick={() => engine.dispatch({ type: 'buySlot', hangarId: h.id })}
@@ -164,17 +202,31 @@ function ShipDetail({ id }: { id: number }) {
   return (
     <div className="hangar" style={{ borderColor: SHIP_STATS[ship.cls].color }}>
       <div className="hangar-head">
-        <span className="title">{SHIP_STATS[ship.cls].name} #{ship.id}</span>
+        <span className="title">
+          {SHIP_STATS[ship.cls].name} #{ship.id}
+        </span>
         <span className="blurb grow">{SHIP_STATS[ship.cls].role}</span>
-        <button disabled={ship.mode !== 'docked'} onClick={() => engine.dispatch({ type: 'scrapShip', shipId: id })} title="Scrap for 50 % of base cost (docked only)">
+        <button
+          disabled={ship.mode !== 'docked'}
+          onClick={() => engine.dispatch({ type: 'scrapShip', shipId: id })}
+          title="Scrap for 50 % of base cost (docked only)"
+        >
           Scrap
         </button>
       </div>
       <div className="hint">
         {MODE_LABEL[ship.mode]} · hull {Math.round(ship.hull)}/{Math.round(maxHull(s, ship.cls))}
-        {cap > 0 && <> · cargo {Math.round(ship.cls === 'harvester' ? ship.h2 : ship.cargo)}/{Math.round(cap)}</>}
+        {cap > 0 && (
+          <>
+            {' '}
+            · cargo {Math.round(ship.cls === 'harvester' ? ship.h2 : ship.cargo)}/{Math.round(cap)}
+          </>
+        )}
         <br />
-        Stance: {st.engagement} <small>({src('engagement')})</small> · {st.underFire === 'retreatHull' ? `retreat at ${Math.round(st.retreatAt * 100)} %` : st.underFire}{' '}
+        Stance: {st.engagement} <small>({src('engagement')})</small> ·{' '}
+        {st.underFire === 'retreatHull'
+          ? `retreat at ${Math.round(st.retreatAt * 100)} %`
+          : st.underFire}{' '}
         <small>({src('underFire')})</small> · {st.mining} <small>({src('mining')})</small>
       </div>
     </div>
@@ -209,10 +261,11 @@ export function FleetPanel() {
               <span className="meta">
                 {unlocked ? (
                   <>
-                    <span className="cost">{fmt(cost)} cr</span> · {st.slots} slot{st.slots > 1 ? 's' : ''} · ×{count}
+                    <span className="cost">{fmt(cost)} cr</span> · {st.slots} slot
+                    {st.slots > 1 ? 's' : ''} · ×{count}
                   </>
                 ) : (
-                  UNLOCK_HINT[c] ?? 'Locked'
+                  (UNLOCK_HINT[c] ?? 'Locked')
                 )}
               </span>
             </button>
@@ -221,12 +274,21 @@ export function FleetPanel() {
       </div>
       <h3>Hangars</h3>
       <p className="hint">
-        Hangar slots are the board. Drag ships between slots; put a repair drone next to fighters or barges and they repair 3× faster when docked. Click a hangar to build into it.
+        Hangar slots are the board. Drag ships between slots; put a repair drone next to fighters or
+        barges and they repair 3× faster when docked. Click a hangar to build into it.
       </p>
       {s.hangars.map((h) => (
         <div key={h.id}>
-          <HangarBoard h={h} selected={sel === h.id} onSelect={() => setSel(h.id)} selShip={selShip} onShip={(id) => setSelShip(id === selShip ? -1 : id)} />
-          {selShip >= 0 && h.items.some((it) => it.shipId === selShip) && <ShipDetail id={selShip} />}
+          <HangarBoard
+            h={h}
+            selected={sel === h.id}
+            onSelect={() => setSel(h.id)}
+            selShip={selShip}
+            onShip={(id) => setSelShip(id === selShip ? -1 : id)}
+          />
+          {selShip >= 0 && h.items.some((it) => it.shipId === selShip) && (
+            <ShipDetail id={selShip} />
+          )}
         </div>
       ))}
       {hangarCount < 5 && (
@@ -236,7 +298,10 @@ export function FleetPanel() {
             {(Object.keys(HANGAR_TYPES) as HangarType[]).map((t) => (
               <button
                 key={t}
-                disabled={s.credits < NEW_HANGAR_COST(hangarCount) || (t === 'drydock' && s.stats.furthestTier < 2)}
+                disabled={
+                  s.credits < NEW_HANGAR_COST(hangarCount) ||
+                  (t === 'drydock' && s.stats.furthestTier < 2)
+                }
                 onClick={() => engine.dispatch({ type: 'buyHangar', hangarType: t })}
                 title={HANGAR_TYPES[t].blurb}
               >

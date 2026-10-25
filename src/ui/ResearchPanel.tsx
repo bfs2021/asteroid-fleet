@@ -35,7 +35,10 @@ export function ResearchPanel() {
                       <i key={i} className={i < l ? 'f' : ''} />
                     ))}
                   </div>
-                  <button disabled={!canBuyResearch(s, n.id)} onClick={() => engine.dispatch({ type: 'buyResearch', id: n.id })}>
+                  <button
+                    disabled={!canBuyResearch(s, n.id)}
+                    onClick={() => engine.dispatch({ type: 'buyResearch', id: n.id })}
+                  >
                     {maxed ? 'max' : locked ? 'locked' : `${n.cost(l)} RP`}
                   </button>
                 </div>
@@ -51,17 +54,25 @@ export function ResearchPanel() {
       <div className="prestige-box">
         <div className="row">
           <div className="grow">
-            <div className="hint" style={{ margin: 0 }}>Research points available</div>
+            <div className="hint" style={{ margin: 0 }}>
+              Research points available
+            </div>
             <div className="big">{s.research} RP</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="hint" style={{ margin: 0 }}>Prestige now pays</div>
-            <div className="big" style={{ color: '#c9b6ff' }}>+{rp} RP</div>
+            <div className="hint" style={{ margin: 0 }}>
+              Prestige now pays
+            </div>
+            <div className="big" style={{ color: '#c9b6ff' }}>
+              +{rp} RP
+            </div>
           </div>
         </div>
         <p className="hint">
-          RP = ⌊√(ore value delivered ÷ {fmt(RP_DIVISOR)})⌋ × furthest zone tier. This run: {fmt(s.stats.oreValueDelivered)} delivered, furthest {TIER_NAMES[tier]} (×{tier}).
-          Prestige resets credits, ships, slots and position; research, unlocked ships and rules, doctrine and discovered systems persist.
+          RP = ⌊√(ore value delivered ÷ {fmt(RP_DIVISOR)})⌋ × furthest zone tier. This run:{' '}
+          {fmt(s.stats.oreValueDelivered)} delivered, furthest {TIER_NAMES[tier]} (×{tier}).
+          Prestige resets credits, ships, slots and position; research, unlocked ships and rules,
+          doctrine and discovered systems persist.
         </p>
         {!confirm ? (
           <button disabled={rp <= 0} onClick={() => setConfirm(true)}>

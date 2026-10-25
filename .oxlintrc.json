@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    // R3F mutates three.js objects (uniforms, materials) inside useFrame by design.
+    "react/immutability": "off",
+    // RULE_DEFS cards have a `then` field; nothing here is awaited.
+    "unicorn/no-thenable": "off",
+    // Casts are used deliberately at three.js and DOM boundaries.
+    "typescript/no-unsafe-type-assertion": "off",
+    // Side-effect imports (styles.css) are intended.
+    "import/no-unassigned-import": "off",
+    // The sim and UI use small arrays and index-keyed lists that never reorder.
+    "unicorn/no-array-sort": "off",
+    "unicorn/prefer-set-has": "off",
+    "react/no-array-index-key": "off",
+    // tsc already checks that every path returns the declared type.
+    "typescript/consistent-return": "off",
+    "no-shadow": "off",
+    "no-underscore-dangle": "off"
+  },
+  "overrides": [
+    {
+      // An opt-in balance script that logs numbers instead of asserting.
+      "files": ["src/sim/balance.test.ts"],
+      "rules": { "vitest/expect-expect": "off" }
+    }
+  ],
+  "ignorePatterns": ["dist", "node_modules"]
+}

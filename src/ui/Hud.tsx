@@ -49,11 +49,19 @@ export function Hud({
         <div className="chip">
           <span className="k">Credits</span>
           <span className="v">{fmt(s.credits)}</span>
-          <span className="sub">{s.incomeAvg >= 0 ? '+' : ''}{s.incomeAvg.toFixed(1)}/s</span>
+          <span className="sub">
+            {s.incomeAvg >= 0 ? '+' : ''}
+            {s.incomeAvg.toFixed(1)}/s
+          </span>
         </div>
-        <div className="chip" title="Energy pool: solar recharge, spent on refining, shields, warp and drift">
+        <div
+          className="chip"
+          title="Energy pool: solar recharge, spent on refining, shields, warp and drift"
+        >
           <span className="k">Energy</span>
-          <span className="v" style={{ color: 'var(--energy)' }}>{Math.floor(c.energy)}</span>
+          <span className="v" style={{ color: 'var(--energy)' }}>
+            {Math.floor(c.energy)}
+          </span>
           <Bar v={c.energy / emax} color="var(--energy)" />
         </div>
         <div className="chip">
@@ -64,38 +72,65 @@ export function Hud({
           </span>
           <Bar v={c.shield} color="var(--shield)" />
         </div>
-        <div className="chip" title="Unrefined ore in the carrier. The refinery converts it to credits using energy.">
+        <div
+          className="chip"
+          title="Unrefined ore in the carrier. The refinery converts it to credits using energy."
+        >
           <span className="k">Ore hold</span>
-          <span className="v">{fmt(c.ore)}<span className="sub"> / {fmt(storage)}</span></span>
+          <span className="v">
+            {fmt(c.ore)}
+            <span className="sub"> / {fmt(storage)}</span>
+          </span>
           <span className="sub">refine {refineRate(c.refinery).toFixed(0)}/s</span>
         </div>
         {lvl(s, 'fusion') > 0 && (
           <div className="chip">
             <span className="k">H2</span>
-            <span className="v" style={{ color: '#ff9f5a' }}>{c.h2.toFixed(0)}</span>
+            <span className="v" style={{ color: '#ff9f5a' }}>
+              {c.h2.toFixed(0)}
+            </span>
           </div>
         )}
         <div className="chip" title="Ore held by the fleet and carrier raises pirate wave size">
           <span className="k">Cargo heat</span>
-          <span className="v" style={{ color: heat > 2 ? 'var(--bad)' : heat > 1.4 ? 'var(--warn)' : 'var(--text)' }}>×{heat.toFixed(2)}</span>
+          <span
+            className="v"
+            style={{ color: heat > 2 ? 'var(--bad)' : heat > 1.4 ? 'var(--warn)' : 'var(--text)' }}
+          >
+            ×{heat.toFixed(2)}
+          </span>
           <span className="sub">{outside} ships out</span>
         </div>
         <div className="chip">
           <span className="k">System</span>
           <span className="v">{sys.name}</span>
-          <span className={`sub t${sys.tier}`}>{TIER_NAMES[sys.tier]} · ☀ {sys.brightness.toFixed(2)}</span>
+          <span className={`sub t${sys.tier}`}>
+            {TIER_NAMES[sys.tier]} · ☀ {sys.brightness.toFixed(2)}
+          </span>
         </div>
         <div className="spacer" />
         <div className="controls">
-          <button className={engine.paused ? 'on' : ''} onClick={() => engine.togglePause()} title="Pause">
+          <button
+            className={engine.paused ? 'on' : ''}
+            onClick={() => engine.togglePause()}
+            title="Pause"
+          >
             {engine.paused ? '▶' : '❚❚'}
           </button>
           {[1, 2, 4].map((v) => (
-            <button key={v} className={engine.speed === v && !engine.paused ? 'on' : ''} onClick={() => engine.setSpeed(v)}>
+            <button
+              key={v}
+              className={engine.speed === v && !engine.paused ? 'on' : ''}
+              onClick={() => engine.setSpeed(v)}
+            >
               {v}×
             </button>
           ))}
-          <button className={tactical || autoTactical ? 'on' : ''} onClick={onTactical} title="Tactical sensor view (also turns on when you zoom far out)">
+          <button
+            className={tactical || autoTactical ? 'on' : ''}
+            onClick={onTactical}
+            title="Tactical sensor view (also turns on when you zoom far out)"
+          >
             Tactical
           </button>
           <button onClick={onQuality} title="Low quality turns off bloom and caps resolution">
@@ -115,8 +150,12 @@ function Alerts() {
     const outside = s.ships.filter((x) => x.mode !== 'docked').length;
     return (
       <div className="alert warp">
-        Warp to {s.systems[s.warp.targetSystem].name} in {Math.ceil(s.warp.charge)} s · recalling fleet ({outside} outside){' '}
-        <button onClick={() => engine.dispatch({ type: 'jumpNow' })} title="Ships still outside are lost">
+        Warp to {s.systems[s.warp.targetSystem].name} in {Math.ceil(s.warp.charge)} s · recalling
+        fleet ({outside} outside){' '}
+        <button
+          onClick={() => engine.dispatch({ type: 'jumpNow' })}
+          title="Ships still outside are lost"
+        >
           Jump now
         </button>{' '}
         <button onClick={() => engine.dispatch({ type: 'cancelWarp' })}>Cancel</button>
@@ -124,7 +163,13 @@ function Alerts() {
     );
   }
   if (s.wave.active) return <div className="alert">Pirate attack · {s.pirates.length} raiders</div>;
-  if (s.wave.warning) return <div className="alert warn">Pirate wave inbound in {Math.ceil(s.wave.timer)} s · {s.wave.size} raiders</div>;
-  if (s.storm.active > 0) return <div className="alert warn">Solar storm · ships outside cover take damage</div>;
+  if (s.wave.warning)
+    return (
+      <div className="alert warn">
+        Pirate wave inbound in {Math.ceil(s.wave.timer)} s · {s.wave.size} raiders
+      </div>
+    );
+  if (s.storm.active > 0)
+    return <div className="alert warn">Solar storm · ships outside cover take damage</div>;
   return null;
 }

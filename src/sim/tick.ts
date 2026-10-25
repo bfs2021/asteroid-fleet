@@ -20,7 +20,16 @@ import { effectiveStance, rule } from './doctrine';
 import { carrierStorage, dockRepairRate, hangarOf } from './hangar';
 import { copy, dist, dist2, moveAway, moveToward, onSphere, rand, randRange, seeded } from './math';
 import { lvl } from './research';
-import { clusterCenters, createShip, enterSystem, gasGiantPos, log, maxEnergy, maxHull, spawnAsteroid } from './state';
+import {
+  clusterCenters,
+  createShip,
+  enterSystem,
+  gasGiantPos,
+  log,
+  maxEnergy,
+  maxHull,
+  spawnAsteroid,
+} from './state';
 import type { Asteroid, GameState, Pirate, Ship, ShipClass, Vec3 } from './types';
 
 export const SHIELD_HP = 600;
@@ -56,7 +65,8 @@ function fighterDamage(s: GameState, ship: Ship): number {
   let d = SHIP_STATS.fighter.damage * (1 + 0.15 * lvl(s, 'damage'));
   if (lvl(s, 'fighterAce') > 0) {
     const h = hangarOf(s, ship.id);
-    if (h && h.items.every((it) => s.ships.find((x) => x.id === it.shipId)?.cls === 'fighter')) d *= 1.25;
+    if (h && h.items.every((it) => s.ships.find((x) => x.id === it.shipId)?.cls === 'fighter'))
+      d *= 1.25;
   }
   return d;
 }
@@ -65,7 +75,9 @@ function miningRate(s: GameState, ship: Ship): number {
   let r = MINING_RATE * (1 + 0.15 * lvl(s, 'yield'));
   if (lvl(s, 'droneSwarm') > 0) {
     const h = hangarOf(s, ship.id);
-    const n = h ? h.items.filter((it) => s.ships.find((x) => x.id === it.shipId)?.cls === 'drone').length : 0;
+    const n = h
+      ? h.items.filter((it) => s.ships.find((x) => x.id === it.shipId)?.cls === 'drone').length
+      : 0;
     r *= 1 + Math.min(0.5, 0.1 * n);
   }
   return r;
@@ -94,8 +106,10 @@ function inHazard(s: GameState, p: Vec3): boolean {
 function covered(s: GameState, p: Vec3, ctx: Ctx): boolean {
   if (dist(p, s.carrier.pos) < COVER_RADIUS) return true;
   for (const sh of ctx.ships.values()) {
-    if (sh.cls === 'barge' && sh.mode === 'station' && dist(p, sh.pos) < COVER_RADIUS * 0.6) return true;
-    if (sh.cls === 'fighter' && sh.mode !== 'docked' && dist(p, sh.pos) < COVER_RADIUS * 0.5) return true;
+    if (sh.cls === 'barge' && sh.mode === 'station' && dist(p, sh.pos) < COVER_RADIUS * 0.6)
+      return true;
+    if (sh.cls === 'fighter' && sh.mode !== 'docked' && dist(p, sh.pos) < COVER_RADIUS * 0.5)
+      return true;
   }
   return false;
 }
@@ -152,13 +166,19 @@ export function step(s: GameState, dt = DT) {
     income: 0,
   };
   for (const sh of s.ships) {
-    if (sh.cls === 'drone' && sh.targetId >= 0 && (sh.mode === 'toAsteroid' || sh.mode === 'mining'))
+    if (
+      sh.cls === 'drone' &&
+      sh.targetId >= 0 &&
+      (sh.mode === 'toAsteroid' || sh.mode === 'mining')
+    )
       ctx.miners.set(sh.targetId, (ctx.miners.get(sh.targetId) ?? 0) + 1);
-    if (sh.cls === 'fighter' && sh.escortId >= 0) ctx.escorts.set(sh.escortId, (ctx.escorts.get(sh.escortId) ?? 0) + 1);
+    if (sh.cls === 'fighter' && sh.escortId >= 0)
+      ctx.escorts.set(sh.escortId, (ctx.escorts.get(sh.escortId) ?? 0) + 1);
     if (sh.cls === 'hauler' && sh.mode === 'toBarge') ctx.haulerClaims.add(sh.targetId);
   }
   const lowShields = rule(s, 'recallOnLowShields');
-  ctx.recall = !!s.warp || (!!lowShields && s.carrier.shield < lowShields.param && s.pirates.length > 0);
+  ctx.recall =
+    !!s.warp || (!!lowShields && s.carrier.shield < lowShields.param && s.pirates.length > 0);
 
   for (const f of s.fx) f.ttl -= dt;
   s.fx = s.fx.filter((f) => f.ttl > 0);
@@ -216,7 +236,8 @@ function power(s: GameState, dt: number) {
   const c = s.carrier;
   const sys = s.systems[s.systemId];
   const max = maxEnergy(s);
-  let gain = SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar')) * (s.storm.active > 0 ? 1.6 : 1);
+  let gain =
+    SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar')) * (s.storm.active > 0 ? 1.6 : 1);
   if (lvl(s, 'fusion') > 0 && c.h2 > 0 && c.energy < max) {
     const burn = Math.min(c.h2, FUSION_H2 * dt);
     c.h2 -= burn;
@@ -332,7 +353,9 @@ function launch(s: GameState, dt: number, ctx: Ctx) {
   for (const h of s.hangars) {
     h.launchTimer -= dt;
     if (h.launchTimer > 0) continue;
-    const docked = h.items.map((it) => ctx.ships.get(it.shipId)).filter((x): x is Ship => !!x && x.mode === 'docked');
+    const docked = h.items
+      .map((it) => ctx.ships.get(it.shipId))
+      .filter((x): x is Ship => !!x && x.mode === 'docked');
     if (!docked.length) continue;
     const rank = (c: ShipClass) => {
       const i = h.launchOrder.indexOf(c);
@@ -343,7 +366,11 @@ function launch(s: GameState, dt: number, ctx: Ctx) {
     if (!next) continue;
     next.mode = 'idle';
     const off = onSphere(() => rand(s), 3, 0.5);
-    next.pos = { x: s.carrier.pos.x + off.x, y: s.carrier.pos.y + off.y, z: s.carrier.pos.z + off.z };
+    next.pos = {
+      x: s.carrier.pos.x + off.x,
+      y: s.carrier.pos.y + off.y,
+      z: s.carrier.pos.z + off.z,
+    };
     h.launchTimer = HANGAR_TYPES[h.type].launchInterval;
   }
 }
@@ -403,7 +430,12 @@ function behave(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
   }
 }
 
-function pickAsteroid(s: GameState, ship: Ship, ctx: Ctx, mining: 'greedy' | 'safe'): Asteroid | null {
+function pickAsteroid(
+  s: GameState,
+  ship: Ship,
+  ctx: Ctx,
+  mining: 'greedy' | 'safe',
+): Asteroid | null {
   let best: Asteroid | null = null;
   let bestScore = -Infinity;
   for (const a of s.asteroids) {
@@ -527,7 +559,12 @@ function barge(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'greedy' 
     return;
   }
   // Re-pick the station when it is unset or the local field has run dry.
-  if (!ship.station || (ship.mode === 'station' && Math.floor(s.time * 10) % 50 === ship.id % 50 && oreNear(s, ship.station, 14) < 200)) {
+  if (
+    !ship.station ||
+    (ship.mode === 'station' &&
+      Math.floor(s.time * 10) % 50 === ship.id % 50 &&
+      oreNear(s, ship.station, 14) < 200)
+  ) {
     ship.station = pickStation(s, ship, ctx, mining);
     ship.mode = 'idle';
   }
@@ -619,7 +656,8 @@ function hauler(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
 function fighterTarget(s: GameState, ship: Ship, ctx: Ctx, engagement: string): Pirate | null {
   const sensor = SHIP_STATS.fighter.sensor;
   if (engagement === 'passive') return null;
-  if (engagement === 'aggressive') return nearestPirate(s, ship.pos, sensor) ?? nearestPirate(s, s.carrier.pos, sensor * 1.5);
+  if (engagement === 'aggressive')
+    return nearestPirate(s, ship.pos, sensor) ?? nearestPirate(s, s.carrier.pos, sensor * 1.5);
   if (engagement === 'escort') {
     const ward = ctx.ships.get(ship.escortId);
     const anchor = ward ? ward.pos : s.carrier.pos;
@@ -671,7 +709,11 @@ function pickWard(ctx: Ctx): number {
 
 function orbit(p: Vec3, c: Vec3, r: number, t: number, phase: number, step: number) {
   const a = t * 0.35 + phase;
-  moveToward(p, { x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a * 0.7) * 2, z: c.z + Math.sin(a) * r }, step);
+  moveToward(
+    p,
+    { x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a * 0.7) * 2, z: c.z + Math.sin(a) * r },
+    step,
+  );
 }
 
 function fighter(s: GameState, ship: Ship, dt: number, ctx: Ctx, engagement: string) {
@@ -682,7 +724,8 @@ function fighter(s: GameState, ship: Ship, dt: number, ctx: Ctx, engagement: str
       const prev = ship.escortId;
       if (prev >= 0) ctx.escorts.set(prev, Math.max(0, (ctx.escorts.get(prev) ?? 1) - 1));
       ship.escortId = pickWard(ctx);
-      if (ship.escortId >= 0) ctx.escorts.set(ship.escortId, (ctx.escorts.get(ship.escortId) ?? 0) + 1);
+      if (ship.escortId >= 0)
+        ctx.escorts.set(ship.escortId, (ctx.escorts.get(ship.escortId) ?? 0) + 1);
     }
   } else ship.escortId = -1;
 
@@ -846,7 +889,8 @@ function pirateTargetScore(s: GameState, sh: Ship): number {
 
 function pirateStep(s: GameState, dt: number, ctx: Ctx) {
   for (const p of s.pirates) {
-    let tgtPos: Vec3 | null = p.targetId === CARRIER ? s.carrier.pos : ctx.ships.get(p.targetId)?.pos ?? null;
+    let tgtPos: Vec3 | null =
+      p.targetId === CARRIER ? s.carrier.pos : (ctx.ships.get(p.targetId)?.pos ?? null);
     const t = ctx.ships.get(p.targetId);
     if (!tgtPos || (t && t.mode === 'docked') || rand(s) < dt / 3) {
       let best = CARRIER;
@@ -884,8 +928,10 @@ function pirateStep(s: GameState, dt: number, ctx: Ctx) {
 function hazards(s: GameState, dt: number) {
   for (const sh of s.ships) {
     if (sh.mode === 'docked') continue;
-    for (const h of s.hazards) if (dist2(h.pos, sh.pos) < h.radius * h.radius) damageShip(s, sh, h.dps * dt);
-    if (s.storm.active > 0 && dist(sh.pos, s.carrier.pos) > COVER_RADIUS) damageShip(s, sh, 0.6 * dt);
+    for (const h of s.hazards)
+      if (dist2(h.pos, sh.pos) < h.radius * h.radius) damageShip(s, sh, h.dps * dt);
+    if (s.storm.active > 0 && dist(sh.pos, s.carrier.pos) > COVER_RADIUS)
+      damageShip(s, sh, 0.6 * dt);
   }
 }
 
@@ -923,7 +969,8 @@ function reserves(s: GameState, dt: number) {
     const t = (s.reserveTimers[cls] ?? cooldown) - dt;
     s.reserveTimers[cls] = t;
     if (t <= 0) {
-      if (createShip(s, cls)) log(s, `Reserve rebuilt a ${SHIP_STATS[cls].name.toLowerCase()}.`, 'good');
+      if (createShip(s, cls))
+        log(s, `Reserve rebuilt a ${SHIP_STATS[cls].name.toLowerCase()}.`, 'good');
       s.reserveTimers[cls] = cooldown;
     }
   }
@@ -989,4 +1036,3 @@ export function executeJump(s: GameState) {
   for (const sh of s.ships) sh.pos = copy(s.carrier.pos);
   log(s, `Warped to ${s.systems[target].name}.`, 'good');
 }
-

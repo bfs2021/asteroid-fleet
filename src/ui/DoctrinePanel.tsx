@@ -21,18 +21,38 @@ const RETREAT = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7];
 
 type Scope = 'fleet' | ShipClass | number;
 
-function StanceRow({ label, scope, value, inherited }: { label: React.ReactNode; scope: Scope; value: Partial<Stance>; inherited: boolean }) {
+function StanceRow({
+  label,
+  scope,
+  value,
+  inherited,
+}: {
+  label: React.ReactNode;
+  scope: Scope;
+  value: Partial<Stance>;
+  inherited: boolean;
+}) {
   const s = useGame();
   const set = (key: keyof Stance, raw: string) => {
     if (raw === '') engine.dispatch({ type: 'setStance', scope, patch: null, key });
-    else engine.dispatch({ type: 'setStance', scope, patch: { [key]: key === 'retreatAt' ? Number(raw) : raw } as Partial<Stance> });
+    else
+      engine.dispatch({
+        type: 'setStance',
+        scope,
+        patch: { [key]: key === 'retreatAt' ? Number(raw) : raw },
+      });
   };
   const engageLocked = !s.unlocked.includes('fighter');
-  const cell = <T extends string | number>(key: keyof Stance, opts: [T, string][], disabled = false) => {
+  const cell = (key: keyof Stance, opts: [string | number, string][], disabled = false) => {
     const v = value[key];
     return (
       <td>
-        <select className={v === undefined ? 'inherit' : ''} value={v === undefined ? '' : String(v)} onChange={(e) => set(key, e.target.value)} disabled={disabled}>
+        <select
+          className={v === undefined ? 'inherit' : ''}
+          value={v === undefined ? '' : String(v)}
+          onChange={(e) => set(key, e.target.value)}
+          disabled={disabled}
+        >
           {inherited && <option value="">inherit</option>}
           {opts.map(([o, l]) => (
             <option key={String(o)} value={String(o)}>
@@ -63,7 +83,9 @@ export function DoctrinePanel() {
     <>
       <h3>Stances</h3>
       <p className="hint">
-        You never give direct orders. Stances set default behaviour, from broad to specific: fleet doctrine, then per ship type, then per hangar. The most specific setting wins; rules below override stances while they are active.
+        You never give direct orders. Stances set default behaviour, from broad to specific: fleet
+        doctrine, then per ship type, then per hangar. The most specific setting wins; rules below
+        override stances while they are active.
         {!s.unlocked.includes('fighter') && ' Engagement stances unlock in the frontier.'}
       </p>
       <table className="doc">
@@ -77,7 +99,12 @@ export function DoctrinePanel() {
           </tr>
         </thead>
         <tbody>
-          <StanceRow label={<b>Fleet</b>} scope="fleet" value={s.doctrine.fleet} inherited={false} />
+          <StanceRow
+            label={<b>Fleet</b>}
+            scope="fleet"
+            value={s.doctrine.fleet}
+            inherited={false}
+          />
           {s.unlocked.map((c) => (
             <StanceRow
               key={c}
@@ -93,7 +120,13 @@ export function DoctrinePanel() {
             />
           ))}
           {s.hangars.map((h) => (
-            <StanceRow key={h.id} label={`Hangar ${h.id}`} scope={h.id} value={h.stance} inherited />
+            <StanceRow
+              key={h.id}
+              label={`Hangar ${h.id}`}
+              scope={h.id}
+              value={h.stance}
+              inherited
+            />
           ))}
         </tbody>
       </table>
@@ -103,14 +136,26 @@ export function DoctrinePanel() {
         const def = RULE_DEFS[id];
         const r = s.rules.find((x) => x.id === id);
         const unlocked = s.unlockedRules.includes(id) && r;
-        const tier = Number(Object.entries(ZONE_RULE_UNLOCKS).find(([, ids]) => ids.includes(id))?.[0] ?? 1);
+        const tier = Number(
+          Object.entries(ZONE_RULE_UNLOCKS).find(([, ids]) => ids.includes(id))?.[0] ?? 1,
+        );
         return (
           <div key={id} className={`rule ${!unlocked ? 'locked' : !r.enabled ? 'off' : ''}`}>
-            <input type="checkbox" checked={!!r?.enabled} disabled={!unlocked} onChange={(e) => engine.dispatch({ type: 'setRule', id, enabled: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={!!r?.enabled}
+              disabled={!unlocked}
+              onChange={(e) => engine.dispatch({ type: 'setRule', id, enabled: e.target.checked })}
+            />
             <div className="when">
               <b>{def.unit}</b> · when {def.when.toLowerCase()}
               {def.param && r ? ` ${def.param.fmt(r.param)}` : ''} → {def.then.toLowerCase()}
-              {!unlocked && <span className="hint"> (unlocks in {tier === 2 ? 'the frontier' : 'deep space'})</span>}
+              {!unlocked && (
+                <span className="hint">
+                  {' '}
+                  (unlocks in {tier === 2 ? 'the frontier' : 'deep space'})
+                </span>
+              )}
             </div>
             {def.param && unlocked && (
               <div className="param">
@@ -121,7 +166,9 @@ export function DoctrinePanel() {
                   max={def.param.max}
                   step={def.param.step}
                   value={r.param}
-                  onChange={(e) => engine.dispatch({ type: 'setRule', id, param: Number(e.target.value) })}
+                  onChange={(e) =>
+                    engine.dispatch({ type: 'setRule', id, param: Number(e.target.value) })
+                  }
                 />
                 {def.param.fmt(r.param)}
               </div>

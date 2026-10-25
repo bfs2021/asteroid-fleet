@@ -11,11 +11,32 @@ import {
 import { findSpace } from './hangar';
 import { onSphere, seeded, v3 } from './math';
 import { lvl } from './research';
-import type { Asteroid, GameState, Hangar, Hazard, RuleId, Ship, ShipClass, StarSystem, Vec3 } from './types';
+import type {
+  Asteroid,
+  GameState,
+  Hangar,
+  Hazard,
+  RuleId,
+  Ship,
+  ShipClass,
+  StarSystem,
+  Vec3,
+} from './types';
 
 export const SAVE_VERSION = 1;
 
-const NAMES = ['Kestrel', 'Lumen', 'Harrow', 'Vesper', 'Cinder', 'Tamsin', 'Orrery', 'Ashfall', 'Nadir', 'Umbra'];
+const NAMES = [
+  'Kestrel',
+  'Lumen',
+  'Harrow',
+  'Vesper',
+  'Cinder',
+  'Tamsin',
+  'Orrery',
+  'Ashfall',
+  'Nadir',
+  'Umbra',
+];
 
 export function makeSystems(seed: number): StarSystem[] {
   const r = seeded(seed ^ 0x51f15e);
@@ -61,7 +82,13 @@ function pickOre(r: () => number, tier: number) {
   return table[0];
 }
 
-export function spawnAsteroid(s: GameState, r: () => number, center: Vec3, sys: StarSystem, richBonus = 0): Asteroid {
+export function spawnAsteroid(
+  s: GameState,
+  r: () => number,
+  center: Vec3,
+  sys: StarSystem,
+  richBonus = 0,
+): Asteroid {
   const off = onSphere(r, 9, 0.6);
   const pos = { x: center.x + off.x, y: center.y + off.y, z: center.z + off.z };
   const far = Math.sqrt(center.x * center.x + center.z * center.z);
@@ -107,7 +134,12 @@ export function enterSystem(s: GameState, id: number) {
   const hz = sys.tier === 1 ? 0 : sys.tier === 2 ? 2 : 3;
   for (let i = 0; i < hz; i++) {
     const p = onSphere(r, 90, 0.2);
-    const h: Hazard = { pos: p, radius: 10 + r() * 10, dps: sys.tier === 2 ? 2 : 6, kind: sys.tier === 2 ? 'debris' : 'radiation' };
+    const h: Hazard = {
+      pos: p,
+      radius: 10 + r() * 10,
+      dps: sys.tier === 2 ? 2 : 6,
+      kind: sys.tier === 2 ? 'debris' : 'radiation',
+    };
     if (Math.hypot(p.x, p.z) > 25) s.hazards.push(h);
   }
   s.wave = { timer: sys.tier === 1 ? Infinity : 60, warning: false, active: false, size: 0 };
@@ -137,7 +169,12 @@ export function maxEnergy(s: GameState): number {
   return ENERGY_MAX * (1 + 0.25 * lvl(s, 'energyCap'));
 }
 
-export function createShip(s: GameState, cls: ShipClass, preferredHangar?: number, start?: number): Ship | null {
+export function createShip(
+  s: GameState,
+  cls: ShipClass,
+  preferredHangar?: number,
+  start?: number,
+): Ship | null {
   let hangar: Hangar | undefined;
   let at = start ?? -1;
   if (preferredHangar !== undefined && start !== undefined) {
@@ -212,8 +249,24 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
       refinery: 0,
     },
     hangars: [
-      { id: 1, type: 'launch', slots: 6 + slotsBonus, items: [], stance: {}, launchOrder: ['fighter', 'scout', 'drone', 'repair', 'hauler', 'barge', 'harvester'], launchTimer: 0 },
-      { id: 2, type: 'cargo', slots: 6 + slotsBonus, items: [], stance: {}, launchOrder: ['fighter', 'drone', 'hauler', 'barge', 'repair', 'scout', 'harvester'], launchTimer: 0 },
+      {
+        id: 1,
+        type: 'launch',
+        slots: 6 + slotsBonus,
+        items: [],
+        stance: {},
+        launchOrder: ['fighter', 'scout', 'drone', 'repair', 'hauler', 'barge', 'harvester'],
+        launchTimer: 0,
+      },
+      {
+        id: 2,
+        type: 'cargo',
+        slots: 6 + slotsBonus,
+        items: [],
+        stance: {},
+        launchOrder: ['fighter', 'drone', 'hauler', 'barge', 'repair', 'scout', 'harvester'],
+        launchTimer: 0,
+      },
     ],
     ships: [],
     pirates: [],
@@ -221,13 +274,22 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     hazards: [],
     systems: makeSystems(seed),
     systemId: 0,
-    doctrine: carry?.doctrine ?? { fleet: { ...DEFAULT_STANCE }, byClass: { drone: { mining: 'safe' } } },
+    doctrine: carry?.doctrine ?? {
+      fleet: { ...DEFAULT_STANCE },
+      byClass: { drone: { mining: 'safe' } },
+    },
     rules: carry?.rules ?? [],
     warp: null,
     wave: { timer: Infinity, warning: false, active: false, size: 0 },
     storm: { timer: Infinity, active: 0 },
     reserveTimers: {},
-    stats: { oreValueDelivered: 0, creditsEarned: 0, shipsLost: 0, piratesKilled: 0, furthestTier: 1 },
+    stats: {
+      oreValueDelivered: 0,
+      creditsEarned: 0,
+      shipsLost: 0,
+      piratesKilled: 0,
+      furthestTier: 1,
+    },
     lifetime: carry?.lifetime ?? { prestiges: 0, researchEarned: 0 },
     incomeAvg: 0,
     powerMode: 'balanced',
@@ -241,6 +303,10 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
   s.carrier.energy = maxEnergy(s) * 0.6;
   enterSystem(s, 0);
   for (let i = 0; i < 4; i++) createShip(s, 'drone', 1);
-  log(s, 'Carrier online in ' + s.systems[0].name + '. Set your doctrine, then let the fleet work.', 'good');
+  log(
+    s,
+    'Carrier online in ' + s.systems[0].name + '. Set your doctrine, then let the fleet work.',
+    'good',
+  );
   return s;
 }

@@ -18,5 +18,6 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      # Balance is opt-in (`npm run balance`, BALANCE=1) and must stay out of CI.
       - run: npm test
       - run: npm run build

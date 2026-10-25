@@ -65,18 +65,27 @@ export function migrate(raw: unknown): MigrateResult {
   return validateSave(migrated);
 }
 
+function isRecord(value: unknown): value is SaveBlob {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** On disk, "no timer" is JSON null. In memory it is a number (`Infinity` included). */
+function isTimer(value: unknown): boolean {
+  return value === null || typeof value === 'number';
+}
+
 function validateSave(save: SaveBlob): MigrateResult {
   if (save.version !== SAVE_VERSION) return { ok: false, reason: 'corrupt' };
   if (!Array.isArray(save.ships)) return { ok: false, reason: 'corrupt' };
-  if (!save.carrier || typeof save.carrier !== 'object' || Array.isArray(save.carrier)) {
-    return { ok: false, reason: 'corrupt' };
-  }
-  if (!save.wave || typeof save.wave !== 'object' || Array.isArray(save.wave)) {
-    return { ok: false, reason: 'corrupt' };
-  }
-  if (!save.storm || typeof save.storm !== 'object' || Array.isArray(save.storm)) {
-    return { ok: false, reason: 'corrupt' };
-  }
+  if (!Array.isArray(save.asteroids)) return { ok: false, reason: 'corrupt' };
+  if (!Array.isArray(save.hangars)) return { ok: false, reason: 'corrupt' };
+  if (!Array.isArray(save.systems)) return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.carrier)) return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.stats)) return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.doctrine)) return { ok: false, reason: 'corrupt' };
+  if (typeof save.rng !== 'number') return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.wave) || !isTimer(save.wave.timer)) return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.storm) || !isTimer(save.storm.timer)) return { ok: false, reason: 'corrupt' };
 
   const state = save as unknown as GameState;
   // JSON turns Infinity into null; restore "no timer".

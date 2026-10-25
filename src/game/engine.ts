@@ -24,8 +24,10 @@ class Engine {
   paused = false;
   offline: OfflineReport | null = null;
   toast: { text: string; at: number } | null = null;
-  /** Set when the stored save was backed up instead of loaded. Autosave stays off. */
+  /** Shown when the stored save could not be loaded. Autosave stays off. */
   saveNotice: string | null = null;
+  /** The notice is up because the backup write itself failed. */
+  saveBackupFailed = false;
   loaded = false;
 
   private version = 0;
@@ -44,6 +46,7 @@ class Engine {
       if (report) this.offline = report;
     } else if (saved.reason !== 'empty') {
       this.saveNotice = saved.notice;
+      this.saveBackupFailed = !saved.backedUp;
     }
     this.loaded = true;
     this.snapshot();
@@ -121,6 +124,7 @@ class Engine {
   replace(state: GameState) {
     this.state = state;
     this.saveNotice = null;
+    this.saveBackupFailed = false;
     allowSaveOverwrite();
     this.snapshot();
     this.save();

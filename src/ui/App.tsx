@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { engine, useGame } from '../game/engine';
-import { SAVE_BACKUP_NOTICE, exportSave, importSave, saveOverwriteBlocked } from '../game/save';
+import {
+  SAVE_BACKUP_FAILED_NOTICE,
+  SAVE_BACKUP_NOTICE,
+  exportSave,
+  importSave,
+  readBackups,
+  saveOverwriteBlocked,
+} from '../game/save';
 import { Scene } from '../render/Scene';
 import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
@@ -108,6 +115,8 @@ function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) 
           <button
             onClick={() => {
               if (engine.save()) setMsg('Saved.');
+              else if (engine.saveBackupFailed)
+                setMsg(`${SAVE_BACKUP_FAILED_NOTICE} It was not overwritten.`);
               else setMsg(`${SAVE_BACKUP_NOTICE} It was not overwritten.`);
             }}
           >
@@ -117,19 +126,31 @@ function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) 
           <button
             onClick={() => {
               const s = importSave(text);
-              if (s) {
-                engine.replace(s);
-                setMsg('Save imported.');
-              } else setMsg('That is not a valid save.');
+              if (!s) {
+                setMsg('That is not a valid save.');
+                return;
+              }
+              if (
+                engine.saveBackupFailed &&
+                !confirm(
+                  'Import this save? The unreadable save could not be backed up and will be lost.',
+                )
+              ) {
+                return;
+              }
+              engine.replace(s);
+              setMsg('Save imported.');
             }}
           >
             Import save
           </button>
           <button
             onClick={() => {
-              const question = saveOverwriteBlocked()
-                ? 'Start a new game? The unreadable save stays in its backup, and the primary slot will be replaced.'
-                : 'Wipe everything, including research?';
+              const question = !saveOverwriteBlocked()
+                ? 'Wipe everything, including research?'
+                : engine.saveBackupFailed
+                  ? 'Start a new game? The unreadable save could not be backed up and will be lost.'
+                  : 'Start a new game? The unreadable save stays in its backup, and the primary slot will be replaced.';
               if (confirm(question)) {
                 engine.reset();
                 onClose();
@@ -172,12 +193,34 @@ function Offline() {
   );
 }
 
+async function downloadBackups() {
+  const entries = await readBackups();
+  if (entries.length === 0) return;
+  const body =
+    entries.length === 1
+      ? entries[0].text
+      : JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.key, entry.text])));
+  const blob = new Blob([body], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = entries.length === 1 ? `${entries[0].key}.txt` : 'asteroid-fleet-save-backups.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function SaveNotice() {
   useGame();
   if (!engine.saveNotice) return null;
   return (
     <div className="save-notice" role="alert">
-      {engine.saveNotice} Automatic saving is paused so that data is left untouched.
+      <p>{engine.saveNotice} Automatic saving is paused so that data is left untouched.</p>
+      {!engine.saveBackupFailed && (
+        <div className="row">
+          <button onClick={() => engine.reset()}>Start new game (keeps backup)</button>
+          <button onClick={() => void downloadBackups()}>Download backup</button>
+        </div>
+      )}
     </div>
   );
 }

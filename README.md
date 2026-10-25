@@ -42,7 +42,7 @@ CI runs on every pull request and on pushes to `main`, on Node 22 with pnpm 12. 
 
 ## Save migrations
 
-Saves are JSON documents stamped with `SAVE_VERSION` (`src/sim/state.ts`). On load, and again on import, `migrate()` (`src/game/migrate.ts`) brings an older save up to that version. It runs one step per version, in order: `migrations[n]` rewrites a version `n` save into version `n + 1`, then the next step runs, until `SAVE_VERSION`.
+Saves are JSON documents stamped with `SAVE_VERSION` (`src/sim/state.ts`). On load, and again on import, `migrate()` (`src/game/migrate.ts`) brings an older save up to that version. It runs one step per version, in order: `migrations[n]` rewrites a version `n` save into version `n + 1`, then the next step runs, until `SAVE_VERSION`. Steps run on the raw JSON, before timers are restored: a wave or storm timer that means "never" is still `null` there, because that is how `Infinity` survives `JSON.stringify`.
 
 Every save schema change needs all three of these:
 
@@ -50,7 +50,7 @@ Every save schema change needs all three of these:
 2. Add the `migrations[n]` step that upgrades the previous version to the new one.
 3. Check in a fixture of the previous version under `src/game/fixtures/` and a test that loads it and migrates it to the current version. `src/game/fixtures/save-v1.json` is the v1 fixture.
 
-A save that is corrupt, from a newer version than this build, or otherwise unknown is not deleted and not overwritten. The raw text is copied to the backup key `asteroid-fleet-save-backup` in both IndexedDB and the localStorage fallback (the same pair of stores as the primary key `asteroid-fleet-save`). The game shows "Your save could not be loaded and was backed up." and pauses automatic saving so the original stays put. A hard reset or a successful import may reuse the primary slot; the backup key is left alone. A bad import is rejected and does not write either key.
+A save that is corrupt, from a newer version than this build, or otherwise unknown is not deleted and not overwritten. The raw text is copied to `asteroid-fleet-save-backup` in both IndexedDB and the localStorage fallback (the same pair of stores as the primary key `asteroid-fleet-save`). A later failure that is byte-for-byte the same does not rewrite that copy. A different failure is written to `asteroid-fleet-save-backup-<timestamp>` so the earlier backup stays. The game shows "Your save could not be loaded and was backed up." and pauses automatic saving so the original stays put. If both stores reject the copy, it shows "could not be backed up" instead, and a reset or import then warns that the save will be lost. A hard reset or a successful import may reuse the primary slot; backup keys are left alone. A bad import is rejected and does not write any key.
 
 ## Layout
 

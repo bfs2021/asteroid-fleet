@@ -3,6 +3,7 @@ import { SAVE_VERSION, newGame } from '../sim/state';
 import saveV1 from './fixtures/save-v1.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
+  SAVE_BACKUP_FAILED_NOTICE,
   SAVE_BACKUP_KEY,
   SAVE_BACKUP_NOTICE,
   SAVE_KEY,
@@ -10,18 +11,19 @@ import {
   exportSave,
   importSave,
   loadGame,
+  readBackups,
   saveGame,
   saveOverwriteBlocked,
   type LoadResult,
 } from './save';
 
 const mem = vi.hoisted(() => ({
-  idb: new Map<string, string>(),
+  idb: new Map<string, unknown>(),
   fail: false,
 }));
 
 vi.mock('idb-keyval', () => ({
-  get: vi.fn<(key: string) => Promise<string | undefined>>(async (key) => {
+  get: vi.fn<(key: string) => Promise<unknown>>(async (key) => {
     if (mem.fail) throw new Error('indexedDB unavailable');
     return mem.idb.get(key);
   }),
@@ -29,21 +31,30 @@ vi.mock('idb-keyval', () => ({
     if (mem.fail) throw new Error('indexedDB unavailable');
     mem.idb.set(key, value);
   }),
+  entries: vi.fn<() => Promise<[string, unknown][]>>(async () => {
+    if (mem.fail) throw new Error('indexedDB unavailable');
+    return [...mem.idb.entries()];
+  }),
 }));
 
 let local: Map<string, string>;
 
-function installLocalStorage() {
+function installLocalStorage(options?: { rejectWrites?: boolean }) {
   local = new Map();
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => (local.has(key) ? local.get(key)! : null),
     setItem: (key: string, value: string) => {
+      if (options?.rejectWrites) throw new Error('quota');
       local.set(key, value);
     },
     removeItem: (key: string) => {
       local.delete(key);
     },
     clear: () => local.clear(),
+    key: (index: number) => [...local.keys()][index] ?? null,
+    get length() {
+      return local.size;
+    },
   });
 }
 
@@ -99,7 +110,22 @@ describe('migrate', () => {
     expect(out).toMatchObject({ version: 3, a: 1, b: 2 });
     expect(applyMigrationSteps({ version: 1 }, 1, 3, { 1: (save) => save })).toBeNull();
   });
+
+  it('rejects a version that is not a positive integer, and non-objects', () => {
+    expect(migrate({ version: 0 })).toEqual({ ok: false, reason: 'unknown' });
+    expect(migrate({ version: -2 })).toEqual({ ok: false, reason: 'unknown' });
+    expect(migrate({ version: 1.5 })).toEqual({ ok: false, reason: 'unknown' });
+    expect(migrate({ version: '1' })).toEqual({ ok: false, reason: 'unknown' });
+    expect(migrate(null)).toEqual({ ok: false, reason: 'corrupt' });
+    expect(migrate([])).toEqual({ ok: false, reason: 'corrupt' });
+    expect(migrate('save')).toEqual({ ok: false, reason: 'corrupt' });
+  });
 });
+
+function unreadable(result: LoadResult): Extract<LoadResult, { backedUp: boolean }> {
+  if (result.ok || result.reason === 'empty') throw new Error('expected an unreadable save');
+  return result;
+}
 
 async function expectPreserved(
   raw: string,
@@ -108,7 +134,7 @@ async function expectPreserved(
   mem.idb.set(SAVE_KEY, raw);
   local.set(SAVE_KEY, raw);
   const loaded = await loadGame();
-  expect(loaded).toEqual({ ok: false, reason, notice: SAVE_BACKUP_NOTICE });
+  expect(loaded).toEqual({ ok: false, reason, notice: SAVE_BACKUP_NOTICE, backedUp: true });
   expect(mem.idb.get(SAVE_KEY)).toBe(raw);
   expect(local.get(SAVE_KEY)).toBe(raw);
   expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe(raw);
@@ -171,13 +197,96 @@ describe('unreadable saves', () => {
     const raw = '{"nope"';
     local.set(SAVE_KEY, raw);
     const loaded = await loadGame();
-    expect(loaded).toEqual({ ok: false, reason: 'corrupt', notice: SAVE_BACKUP_NOTICE });
+    expect(loaded).toEqual({
+      ok: false,
+      reason: 'corrupt',
+      notice: SAVE_BACKUP_NOTICE,
+      backedUp: true,
+    });
     expect(local.get(SAVE_KEY)).toBe(raw);
     expect(local.get(SAVE_BACKUP_KEY)).toBe(raw);
     expect(mem.idb.has(SAVE_KEY)).toBe(false);
     expect(mem.idb.has(SAVE_BACKUP_KEY)).toBe(false);
     expect(await saveGame(newGame(2))).toBe(false);
     expect(local.get(SAVE_KEY)).toBe(raw);
+  });
+
+  it('keeps an earlier backup when a later failed load is different', async () => {
+    const first = '{"broken-a"';
+    const second = '{"broken-b"';
+    mem.idb.set(SAVE_KEY, first);
+    local.set(SAVE_KEY, first);
+    expect(unreadable(await loadGame()).backedUp).toBe(true);
+    expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe(first);
+    expect(local.get(SAVE_BACKUP_KEY)).toBe(first);
+
+    allowSaveOverwrite();
+    expect(await saveGame(newGame(9))).toBe(true);
+
+    mem.idb.set(SAVE_KEY, second);
+    local.set(SAVE_KEY, second);
+    expect(unreadable(await loadGame()).backedUp).toBe(true);
+    expect(mem.idb.get(SAVE_KEY)).toBe(second);
+    expect(local.get(SAVE_KEY)).toBe(second);
+    expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe(first);
+    expect(local.get(SAVE_BACKUP_KEY)).toBe(first);
+    const extras = [...mem.idb.keys()].filter(
+      (key) => key.startsWith(`${SAVE_BACKUP_KEY}-`) && mem.idb.get(key) === second,
+    );
+    expect(extras).toHaveLength(1);
+    expect(local.get(extras[0])).toBe(second);
+    const stored = await readBackups();
+    expect(stored.map((entry) => entry.text).sort()).toEqual([first, second].sort());
+  });
+
+  it('does not rewrite a backup that already holds the same bytes', async () => {
+    const raw = '{"same"';
+    mem.idb.set(SAVE_KEY, raw);
+    local.set(SAVE_KEY, raw);
+    await loadGame();
+    allowSaveOverwrite();
+    expect(await saveGame(newGame(4))).toBe(true);
+    mem.idb.set(SAVE_KEY, raw);
+    local.set(SAVE_KEY, raw);
+    await loadGame();
+    const backupKeys = [...mem.idb.keys()].filter((key) => key.startsWith(SAVE_BACKUP_KEY));
+    expect(backupKeys).toEqual([SAVE_BACKUP_KEY]);
+    expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe(raw);
+    expect(local.get(SAVE_BACKUP_KEY)).toBe(raw);
+  });
+
+  it('does not claim a backup when IndexedDB and localStorage both reject the write', async () => {
+    mem.fail = true;
+    installLocalStorage({ rejectWrites: true });
+    const raw = '{"nope"';
+    local.set(SAVE_KEY, raw);
+    const loaded = await loadGame();
+    expect(loaded).toEqual({
+      ok: false,
+      reason: 'corrupt',
+      notice: SAVE_BACKUP_FAILED_NOTICE,
+      backedUp: false,
+    });
+    expect(local.get(SAVE_KEY)).toBe(raw);
+    expect(local.has(SAVE_BACKUP_KEY)).toBe(false);
+    expect(mem.idb.has(SAVE_BACKUP_KEY)).toBe(false);
+    expect(mem.idb.has(SAVE_KEY)).toBe(false);
+    expect(saveOverwriteBlocked()).toBe(true);
+    expect(await saveGame(newGame(5))).toBe(false);
+    expect(local.get(SAVE_KEY)).toBe(raw);
+  });
+
+  it('backs up a non-string IndexedDB value instead of treating it as empty', async () => {
+    const value = { version: 1, credits: 99 };
+    mem.idb.set(SAVE_KEY, value);
+    const loaded = unreadable(await loadGame());
+    expect(loaded.reason).toBe('corrupt');
+    expect(loaded.backedUp).toBe(true);
+    expect(mem.idb.get(SAVE_KEY)).toEqual(value);
+    expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe(JSON.stringify(value));
+    expect(local.get(SAVE_BACKUP_KEY)).toBe(JSON.stringify(value));
+    expect(await saveGame(newGame(6))).toBe(false);
+    expect(mem.idb.get(SAVE_KEY)).toEqual(value);
   });
 });
 
@@ -195,6 +304,21 @@ describe('export / import', () => {
     expect(copy!.stats.oreValueDelivered).toBe(50);
     expect(copy!.wave.timer).toBe(state.wave.timer);
     expect(copy!.storm.timer).toBe(state.storm.timer);
+  });
+
+  it('round-trips a numeric storm timer from a tier 2 system', () => {
+    const state = newGame(8);
+    const tier2 = state.systems.find((system) => system.tier >= 2);
+    expect(tier2).toBeTruthy();
+    state.systemId = tier2!.id;
+    state.storm.timer = 27.5;
+    state.wave.timer = 12;
+    const copy = importSave(exportSave(state));
+    expect(copy).not.toBeNull();
+    expect(copy!.systemId).toBe(tier2!.id);
+    expect(copy!.systems[copy!.systemId].tier).toBeGreaterThanOrEqual(2);
+    expect(copy!.storm.timer).toBe(27.5);
+    expect(copy!.wave.timer).toBe(12);
   });
 
   it('imports a v1 fixture through the same migrate path', () => {

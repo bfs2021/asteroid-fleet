@@ -1,0 +1,251 @@
+import { useEffect, useState } from 'react';
+import { engine, useGame } from '../game/engine';
+import { exportSave, importSave } from '../game/save';
+import { Scene } from '../render/Scene';
+import { SHIP_STATS } from '../sim/config';
+import { SHIP_CLASSES } from '../sim/types';
+import { CarrierPanel } from './CarrierPanel';
+import { DoctrinePanel } from './DoctrinePanel';
+import { FleetPanel } from './FleetPanel';
+import { Hud, fmt } from './Hud';
+import { ResearchPanel } from './ResearchPanel';
+
+type Tab = 'fleet' | 'doctrine' | 'carrier' | 'research' | 'log';
+const TABS: [Tab, string][] = [
+  ['fleet', 'Hangars'],
+  ['doctrine', 'Doctrine'],
+  ['carrier', 'Carrier'],
+  ['research', 'Research'],
+  ['log', 'Log'],
+];
+
+function read<T extends string>(key: string, fallback: T): T {
+  try {
+    return (localStorage.getItem(key) as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function write(key: string, v: string) {
+  try {
+    localStorage.setItem(key, v);
+  } catch {
+    /* ignore */
+  }
+}
+
+function LogPanel() {
+  const s = useGame();
+  const st = s.stats;
+  return (
+    <>
+      <h3>This run</h3>
+      <p className="hint">
+        {fmt(st.oreValueDelivered)} ore value delivered · {fmt(st.creditsEarned)} credits earned · {st.piratesKilled} pirates destroyed · {st.shipsLost} ships lost · prestige ×{s.lifetime.prestiges}
+      </p>
+      <h3>Event log</h3>
+      <div className="log">
+        {s.log.map((l, i) => (
+          <div key={i} className={`tone-${l.tone}`}>
+            <span className="t">{new Date(l.t * 1000).toISOString().slice(11, 19)}</span>
+            {l.text}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Help({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>You are the admiral, not the pilot</h2>
+        <p>Your mining carrier's fleet works on its own. You shape how it behaves:</p>
+        <ul>
+          <li>
+            <b>Hangars</b> are the board: buy ships into slots (drone 1, fighter 2, barge 4). Neighbours can trigger synergies, and each hangar has a launch order.
+          </li>
+          <li>
+            <b>Doctrine</b>: stances for the whole fleet, per ship type and per hangar, plus simple rules that fire on conditions.
+          </li>
+          <li>
+            <b>Logistics</b>: drones mine, barges park at rich clusters as depots, haulers shuttle ore home, the refinery turns ore into credits with energy. The slowest link sets your income.
+          </li>
+          <li>
+            <b>Carrier</b>: warp outward for richer ore and tougher pirates, or back to safety. Ships outside at jump time are lost for good.
+          </li>
+          <li>
+            <b>Research</b>: prestige resets the operation for research points that persist.
+          </li>
+        </ul>
+        <p className="hint">Drag to orbit, scroll to zoom, right-drag to pan. Zoom far out (or press Tactical) for the sensor view. The game saves itself and keeps working at reduced rate while you are away.</p>
+        <button onClick={onClose}>Take command</button>
+      </div>
+    </div>
+  );
+}
+
+function Menu({ onClose, onHelp }: { onClose: () => void; onHelp: () => void }) {
+  const [text, setText] = useState('');
+  const [msg, setMsg] = useState('');
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Menu</h2>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button onClick={onHelp}>How to play</button>
+          <button
+            onClick={() => {
+              engine.save();
+              setMsg('Saved.');
+            }}
+          >
+            Save now
+          </button>
+          <button onClick={() => setText(exportSave(engine.state))}>Export save</button>
+          <button
+            onClick={() => {
+              const s = importSave(text);
+              if (s) {
+                engine.replace(s);
+                setMsg('Save imported.');
+              } else setMsg('That is not a valid save.');
+            }}
+          >
+            Import save
+          </button>
+          <button
+            onClick={() => {
+              if (confirm('Wipe everything, including research?')) {
+                engine.reset();
+                onClose();
+              }
+            }}
+          >
+            Hard reset
+          </button>
+        </div>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Export fills this box; paste a save here to import." />
+        {msg && <p className="hint">{msg}</p>}
+        <button onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function Offline() {
+  useGame();
+  const r = engine.offline;
+  if (!r) return null;
+  const h = Math.floor(r.seconds / 3600);
+  const m = Math.floor((r.seconds % 3600) / 60);
+  return (
+    <div className="modal-bg">
+      <div className="modal">
+        <h2>Welcome back, admiral</h2>
+        <p>
+          You were away for {h ? `${h} h ` : ''}
+          {m} min. The fleet kept working the system safely at reduced rate and earned <b>{fmt(r.credits)} credits</b>.
+          {r.rebuilt > 0 && ` Reserves rebuilt ${r.rebuilt} ships.`}
+        </p>
+        <button onClick={() => engine.dismissOffline()}>Resume</button>
+      </div>
+    </div>
+  );
+}
+
+function Toast() {
+  useGame();
+  const t = engine.toast;
+  if (!t || Date.now() - t.at > 2500) return null;
+  return <div className="toast">{t.text}</div>;
+}
+
+export function App() {
+  const [tab, setTab] = useState<Tab>(() => read('af-tab', 'fleet'));
+  const [tactical, setTactical] = useState(false);
+  const [autoTactical, setAutoTactical] = useState(false);
+  const [quality, setQuality] = useState<'high' | 'low'>(() => read('af-quality', 'high'));
+  const [menu, setMenu] = useState(false);
+  const [help, setHelp] = useState(() => read<string>('af-seen-help', '') !== '1');
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => write('af-tab', tab), [tab]);
+  useEffect(() => write('af-quality', quality), [quality]);
+
+  return (
+    <div className="app">
+      <div className="canvas-wrap">
+        <Scene tactical={tactical} quality={quality} onAutoTactical={setAutoTactical} />
+      </div>
+      <Hud
+        tactical={tactical}
+        autoTactical={autoTactical}
+        quality={quality}
+        onTactical={() => setTactical((v) => !v)}
+        onQuality={() => setQuality((q) => (q === 'high' ? 'low' : 'high'))}
+        onMenu={() => setMenu(true)}
+      />
+      <div className={`side ${collapsed ? 'collapsed' : ''}`}>
+        <div className="tabs">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              className={tab === id && !collapsed ? 'on' : ''}
+              onClick={() => {
+                if (tab === id) setCollapsed((c) => !c);
+                else {
+                  setTab(id);
+                  setCollapsed(false);
+                }
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {!collapsed && (
+          <div className="panel-body">
+            {tab === 'fleet' && <FleetPanel />}
+            {tab === 'doctrine' && <DoctrinePanel />}
+            {tab === 'carrier' && <CarrierPanel />}
+            {tab === 'research' && <ResearchPanel />}
+            {tab === 'log' && <LogPanel />}
+          </div>
+        )}
+      </div>
+      <div className="legend">
+        {SHIP_CLASSES.map((c) => (
+          <span key={c}>
+            <i className="swatch" style={{ background: SHIP_STATS[c].color }} />
+            {SHIP_STATS[c].name}
+          </span>
+        ))}
+        <span>
+          <i className="swatch" style={{ background: '#ff3b3b' }} />
+          Pirate
+        </span>
+      </div>
+      <Toast />
+      <Offline />
+      {menu && (
+        <Menu
+          onClose={() => setMenu(false)}
+          onHelp={() => {
+            setMenu(false);
+            setHelp(true);
+          }}
+        />
+      )}
+      {help && (
+        <Help
+          onClose={() => {
+            setHelp(false);
+            write('af-seen-help', '1');
+          }}
+        />
+      )}
+    </div>
+  );
+}

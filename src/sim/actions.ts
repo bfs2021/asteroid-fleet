@@ -1,0 +1,237 @@
+import {
+  HANGAR_SLOT_COST,
+  HANGAR_TYPES,
+  MAX_REFINERY,
+  REFINERY_COST,
+  MAX_HANGAR_SLOTS,
+  NEW_HANGAR_COST,
+  OFFLINE_CAP_S,
+  OFFLINE_EFFICIENCY,
+  RP_DIVISOR,
+  SHIP_STATS,
+  WARP_CHARGE,
+  warpCost,
+} from './config';
+import { moveShip as moveOnBoard } from './hangar';
+import { buyResearch as buyNode, lvl } from './research';
+import { createShip, log, maxEnergy, newGame } from './state';
+import { executeJump } from './tick';
+import type { CarrierStance, GameState, HangarType, RuleId, ShipClass, Stance } from './types';
+
+export type Command =
+  | { type: 'buyShip'; cls: ShipClass; hangarId?: number; start?: number }
+  | { type: 'scrapShip'; shipId: number }
+  | { type: 'moveShip'; shipId: number; hangarId: number; start: number }
+  | { type: 'buySlot'; hangarId: number }
+  | { type: 'buyHangar'; hangarType: HangarType }
+  | { type: 'retrofitHangar'; hangarId: number; hangarType: HangarType }
+  | { type: 'setLaunchOrder'; hangarId: number; order: ShipClass[] }
+  | { type: 'setStance'; scope: 'fleet' | ShipClass | number; patch: Partial<Stance> | null; key?: keyof Stance }
+  | { type: 'setRule'; id: RuleId; enabled?: boolean; param?: number }
+  | { type: 'warp'; systemId: number }
+  | { type: 'cancelWarp' }
+  | { type: 'jumpNow' }
+  | { type: 'setPower'; mode: GameState['powerMode'] }
+  | { type: 'setCarrierStance'; stance: CarrierStance }
+  | { type: 'buyResearch'; id: string }
+  | { type: 'upgradeRefinery' };
+
+export const RETROFIT_COST = 800;
+
+export function shipCost(s: GameState, cls: ShipClass): number {
+  const n = s.ships.filter((x) => x.cls === cls).length;
+  return Math.round(SHIP_STATS[cls].cost * Math.pow(1.07, n));
+}
+
+export function apply(s: GameState, c: Command): string | null {
+  switch (c.type) {
+    case 'buyShip': {
+      if (!s.unlocked.includes(c.cls)) return 'Not unlocked yet';
+      const cost = shipCost(s, c.cls);
+      if (s.credits < cost) return 'Not enough credits';
+      const ship = createShip(s, c.cls, c.hangarId, c.start);
+      if (!ship) return 'No free hangar slots';
+      s.credits -= cost;
+      return null;
+    }
+    case 'scrapShip': {
+      const ship = s.ships.find((x) => x.id === c.shipId);
+      if (!ship) return 'No such ship';
+      if (ship.mode !== 'docked') return 'Ship must be docked';
+      s.credits += Math.round(SHIP_STATS[ship.cls].cost * 0.5);
+      s.ships = s.ships.filter((x) => x.id !== ship.id);
+      for (const h of s.hangars) h.items = h.items.filter((it) => it.shipId !== ship.id);
+      return null;
+    }
+    case 'moveShip':
+      return moveOnBoard(s, c.shipId, c.hangarId, c.start) ? null : 'Does not fit there';
+    case 'buySlot': {
+      const h = s.hangars.find((x) => x.id === c.hangarId);
+      if (!h) return 'No such hangar';
+      if (h.slots >= MAX_HANGAR_SLOTS) return 'Hangar is at maximum size';
+      const cost = HANGAR_SLOT_COST(h.slots);
+      if (s.credits < cost) return 'Not enough credits';
+      s.credits -= cost;
+      h.slots++;
+      return null;
+    }
+    case 'buyHangar': {
+      const cost = NEW_HANGAR_COST(s.hangars.length);
+      if (s.hangars.length >= 5) return 'The carrier has no room for more hangars';
+      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2) return 'Dry docks unlock in the frontier';
+      if (s.credits < cost) return 'Not enough credits';
+      s.credits -= cost;
+      const id = Math.max(...s.hangars.map((h) => h.id)) + 1;
+      s.hangars.push({
+        id,
+        type: c.hangarType,
+        slots: 4 + lvl(s, 'slots'),
+        items: [],
+        stance: {},
+        launchOrder: ['fighter', 'scout', 'drone', 'repair', 'hauler', 'barge', 'harvester'],
+        launchTimer: 0,
+      });
+      log(s, `New ${HANGAR_TYPES[c.hangarType].name.toLowerCase()} installed.`, 'good');
+      return null;
+    }
+    case 'retrofitHangar': {
+      const h = s.hangars.find((x) => x.id === c.hangarId);
+      if (!h || h.type === c.hangarType) return null;
+      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2) return 'Dry docks unlock in the frontier';
+      if (s.credits < RETROFIT_COST) return 'Not enough credits';
+      s.credits -= RETROFIT_COST;
+      h.type = c.hangarType;
+      return null;
+    }
+    case 'setLaunchOrder': {
+      const h = s.hangars.find((x) => x.id === c.hangarId);
+      if (h) h.launchOrder = c.order;
+      return null;
+    }
+    case 'setStance': {
+      const target =
+        c.scope === 'fleet'
+          ? s.doctrine.fleet
+          : typeof c.scope === 'number'
+            ? s.hangars.find((h) => h.id === c.scope)?.stance
+            : (s.doctrine.byClass[c.scope] ??= {});
+      if (!target) return 'No such scope';
+      if (c.patch === null) {
+        // clear one key (back to inherited); never clear the fleet default
+        if (c.scope !== 'fleet' && c.key) delete (target as Partial<Stance>)[c.key];
+        return null;
+      }
+      Object.assign(target, c.patch);
+      return null;
+    }
+    case 'setRule': {
+      const r = s.rules.find((x) => x.id === c.id);
+      if (!r || !s.unlockedRules.includes(c.id)) return 'Rule locked';
+      if (c.enabled !== undefined) r.enabled = c.enabled;
+      if (c.param !== undefined) r.param = c.param;
+      return null;
+    }
+    case 'warp': {
+      if (s.warp) return 'Already charging a jump';
+      const from = s.systems[s.systemId];
+      const to = s.systems[c.systemId];
+      if (!to || !to.discovered || to.id === from.id) return 'Unknown system';
+      const cost = warpCost(from.distance, to.distance);
+      if (s.carrier.energy < cost) return `Needs ${cost} energy`;
+      s.carrier.energy -= cost;
+      s.warp = { targetSystem: to.id, charge: WARP_CHARGE * (1 - 0.15 * lvl(s, 'warpCharge')) };
+      log(s, `Warp drive charging for ${to.name}. Recalling the fleet.`, 'warn');
+      return null;
+    }
+    case 'cancelWarp': {
+      if (!s.warp) return null;
+      const from = s.systems[s.systemId];
+      const to = s.systems[s.warp.targetSystem];
+      s.carrier.energy = Math.min(maxEnergy(s), s.carrier.energy + warpCost(from.distance, to.distance) * 0.75);
+      s.warp = null;
+      log(s, 'Jump cancelled.', 'info');
+      return null;
+    }
+    case 'jumpNow':
+      if (s.warp) executeJump(s);
+      return null;
+    case 'setPower':
+      s.powerMode = c.mode;
+      return null;
+    case 'setCarrierStance':
+      s.carrier.stance = c.stance;
+      return null;
+    case 'upgradeRefinery': {
+      if (s.carrier.refinery >= MAX_REFINERY) return 'Refinery fully upgraded';
+      const cost = REFINERY_COST(s.carrier.refinery);
+      if (s.credits < cost) return 'Not enough credits';
+      s.credits -= cost;
+      s.carrier.refinery++;
+      return null;
+    }
+    case 'buyResearch':
+      return buyNode(s, c.id) ? null : 'Cannot research that yet';
+  }
+}
+
+// ---------- prestige ----------
+
+export function researchPayout(s: GameState): number {
+  return Math.floor(Math.sqrt(s.stats.oreValueDelivered / RP_DIVISOR)) * s.stats.furthestTier;
+}
+
+export function prestige(s: GameState): GameState {
+  const rp = researchPayout(s);
+  const next = newGame(s.seed + s.lifetime.prestiges + 1, {
+    research: s.research + rp,
+    researchLevels: { ...s.researchLevels },
+    unlocked: [...s.unlocked],
+    unlockedRules: [...s.unlockedRules],
+    discovered: s.systems.filter((x) => x.discovered).map((x) => x.id),
+    lifetime: { prestiges: s.lifetime.prestiges + 1, researchEarned: s.lifetime.researchEarned + rp },
+    doctrine: structuredClone(s.doctrine),
+    rules: structuredClone(s.rules),
+  });
+  log(next, `Operation reset. +${rp} research points.`, 'good');
+  return next;
+}
+
+// ---------- offline ----------
+
+export interface OfflineReport {
+  seconds: number;
+  credits: number;
+  rebuilt: number;
+}
+
+/**
+ * Offline is mostly safe: no pirate waves, and the fleet earns what the system's safe
+ * behaviour yielded recently, at reduced efficiency. Reserves keep rebuilding.
+ */
+export function settleOffline(s: GameState, elapsedS: number): OfflineReport | null {
+  const t = Math.min(OFFLINE_CAP_S, Math.max(0, elapsedS));
+  if (t < 30) return null;
+  const credits = Math.max(0, s.incomeAvg) * t * OFFLINE_EFFICIENCY;
+  s.credits += credits;
+  s.stats.creditsEarned += credits;
+  s.stats.oreValueDelivered += credits;
+  s.carrier.energy = maxEnergy(s);
+  s.carrier.shield = 1;
+  s.pirates = [];
+  s.wave.active = false;
+  s.wave.warning = false;
+  if (s.systems[s.systemId].tier > 1) s.wave.timer = 60;
+  let rebuilt = 0;
+  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
+  const defs: [ShipClass, number, number][] = [
+    ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
+    ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
+  ];
+  for (const [cls, min, cooldown] of defs) {
+    const have = s.ships.filter((x) => x.cls === cls).length;
+    const n = Math.min(Math.max(0, min - have), Math.floor(t / cooldown));
+    for (let i = 0; i < n; i++) if (createShip(s, cls)) rebuilt++;
+  }
+  log(s, `Welcome back. The fleet earned ${Math.round(credits)} credits while you were away.`, 'good');
+  return { seconds: t, credits, rebuilt };
+}

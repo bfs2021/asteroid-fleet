@@ -454,8 +454,10 @@ describe('storage weight (#40)', () => {
 
   it('falls back to localStorage without IndexedDB, and reports a save nothing kept', async () => {
     mem.fail = true;
-    expect(await saveGame(newGame(7))).toBe(true);
-    expect(local.get(SAVE_KEY)).toBe(JSON.stringify(newGame(7)));
+    // One state: newGame stamps the clock, so two calls can differ.
+    const state = newGame(7);
+    expect(await saveGame(state)).toBe(true);
+    expect(local.get(SAVE_KEY)).toBe(JSON.stringify(state));
     installLocalStorage({ rejectWrites: true });
     expect(await saveGame(newGame(7))).toBe(false);
   });

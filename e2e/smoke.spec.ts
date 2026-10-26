@@ -49,9 +49,10 @@ test('saving goes through the worker and survives a reload', async ({ page }) =>
   await expect.poll(async () => (await state()).time, { timeout: 20_000 }).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Save Management' }).click();
+  // Read before saving: the written save is at least this far along.
+  const saved = await state();
   await page.getByRole('button', { name: 'Save now' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
-  const saved = await state();
   await page.waitForTimeout(300);
   await page.reload();
   const loaded = await state();

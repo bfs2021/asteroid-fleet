@@ -39,7 +39,12 @@ const MODE_LABEL: Record<string, string> = {
   repairing: 'repairing',
   retreat: 'retreating',
   recall: 'recalled',
+  carried: 'in barge bay',
 };
+
+// Haulers use `toDropoff` for salvage runs to a barge wreck's container.
+const modeLabel = (ship: Ship) =>
+  ship.cls === 'hauler' && ship.mode === 'toDropoff' ? 'salvaging' : MODE_LABEL[ship.mode];
 
 const UNLOCK_HINT: Partial<Record<ShipClass, string>> = {
   fighter: 'Reach the frontier',
@@ -149,7 +154,7 @@ function HangarBoard({
         title={`${st.name}${syn ? ' · ' + syn : ''}`}
       >
         <span className="nm">{st.slots >= 4 ? st.name : st.short}</span>
-        <span className="md">{MODE_LABEL[ship.mode]}</span>
+        <span className="md">{modeLabel(ship)}</span>
         {syn && <span className="synergy">✚</span>}
         <span className="hp" style={{ width: `${(ship.hull / maxHull(s, ship.cls)) * 100}%` }} />
       </div>,
@@ -277,7 +282,7 @@ function ShipDetail({ id }: { id: number }) {
         </button>
       </div>
       <div className="hint">
-        {MODE_LABEL[ship.mode]} · hull {Math.round(ship.hull)}/{Math.round(maxHull(s, ship.cls))}
+        {modeLabel(ship)} · hull {Math.round(ship.hull)}/{Math.round(maxHull(s, ship.cls))}
         {cap > 0 && (
           <>
             {' '}

@@ -16,8 +16,125 @@ import {
 } from './ctx';
 import { rule } from './doctrine';
 import { dist, dist2, moveToward, rand } from './math';
-import { clusterCenters, gasGiantPos, h2Storm, log } from './state';
-import type { Asteroid, GameState, Ship, Vec3 } from './types';
+import { lvl } from './research';
+import { clusterCenters, gasGiantPos, h2Storm, log, maxHull } from './state';
+import type { Asteroid, Container, GameState, Ship, Vec3 } from './types';
+
+/** Drones a barge's drone bay holds per `bargeBay` level. */
+export const BARGE_BAY_SLOTS = 1;
+/** Share of a destroyed barge's cargo that survives as a salvage container. */
+export const CONTAINER_SHARE = 0.5;
+/** Seconds a salvage container lasts before it decays. */
+export const CONTAINER_TTL = 90;
+
+export function bargeBaySlots(s: GameState): number {
+  return BARGE_BAY_SLOTS * lvl(s, 'bargeBay');
+}
+
+function bayFree(s: GameState, b: Ship): number {
+  let aboard = 0;
+  for (const x of s.ships) if (x.cls === 'drone' && x.bargeId === b.id) aboard++;
+  return bargeBaySlots(s) - aboard;
+}
+
+/** Board docked drones onto a barge that is launching, while its bay has room. */
+export function boardBargeBay(s: GameState, b: Ship) {
+  let free = bayFree(s, b);
+  for (const d of s.ships) {
+    if (free <= 0) return;
+    if (d.cls !== 'drone' || d.mode !== 'docked' || d.hull < maxHull(s, 'drone') * 0.9) continue;
+    d.mode = 'carried';
+    d.bargeId = b.id;
+    d.pos = { ...b.pos };
+    free--;
+  }
+}
+
+/** A drone launching from the carrier makes a parked barge with a free bay its base. */
+export function assignBargeBay(s: GameState, d: Ship, ctx: Ctx) {
+  if (d.cls !== 'drone' || bargeBaySlots(s) <= 0) return;
+  for (const b of ctx.byClass.barge) {
+    if (b.mode === 'station' && bayFree(s, b) > 0) {
+      d.bargeId = b.id;
+      return;
+    }
+  }
+}
+
+/**
+ * A drone in a barge's bay rides along, repairs, launches once the barge is
+ * on station and docks at the carrier with it.
+ */
+export function carried(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
+  const b = ctx.ships.get(ship.bargeId);
+  if (!b || b.hull <= 0) {
+    ship.bargeId = -1;
+    ship.mode = 'idle';
+    return;
+  }
+  ship.pos.x = b.pos.x;
+  ship.pos.y = b.pos.y;
+  ship.pos.z = b.pos.z;
+  if (b.mode === 'docked') {
+    ship.bargeId = -1;
+    ship.mode = 'docked';
+    ship.pos = { ...s.carrier.pos };
+    return;
+  }
+  const mh = maxHull(s, 'drone');
+  ship.hull = Math.min(mh, ship.hull + 0.05 * mh * dt);
+  if (b.mode === 'station' && ship.hull >= mh * 0.9) ship.mode = 'idle';
+}
+
+/** The drone's barge, while that barge is parked on station. */
+function bayBarge(ship: Ship, ctx: Ctx): Ship | null {
+  if (ship.bargeId < 0) return null;
+  const b = ctx.ships.get(ship.bargeId);
+  if (!b || b.hull <= 0 || b.mode === 'docked') {
+    ship.bargeId = -1;
+    return null;
+  }
+  return b.mode === 'station' ? b : null;
+}
+
+/** Drop part of a destroyed barge's cargo as a salvage container. */
+export function dropContainer(s: GameState, b: Ship) {
+  if (b.cargo <= 0) return;
+  s.containers.push({
+    id: s.nextId++,
+    pos: { ...b.pos },
+    cargo: b.cargo * CONTAINER_SHARE,
+    cargoValue: b.cargoValue * CONTAINER_SHARE,
+    ttl: CONTAINER_TTL,
+  });
+  log(s, 'Barge wreck dropped a cargo container. Haulers can salvage it.', 'warn');
+}
+
+export function decayContainers(s: GameState, dt: number) {
+  let live = 0;
+  for (const c of s.containers) {
+    c.ttl -= dt;
+    if (c.ttl > 0 && c.cargo > 1e-6) s.containers[live++] = c;
+  }
+  s.containers.length = live;
+}
+
+function salvageJob(s: GameState, ship: Ship): Container | null {
+  let best: Container | null = null;
+  let bd = Infinity;
+  for (const c of s.containers) {
+    const claimed = s.ships.some(
+      (x) => x !== ship && x.cls === 'hauler' && x.mode === 'toDropoff' && x.targetId === c.id,
+    );
+    if (claimed) continue;
+    const d = dist2(ship.pos, c.pos);
+    if (d < bd) {
+      bd = d;
+      best = c;
+    }
+  }
+  return best;
+}
 
 /**
  * Best asteroid for a drone. Walks the asteroid grid outward from the drone
@@ -62,6 +179,8 @@ function pickAsteroid(
 }
 
 function bestDropoff(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
+  const bay = bayBarge(ship, ctx);
+  if (bay && bay.cargo < cargoCap(s, 'barge') - 1) return bay;
   const r = rule(s, 'droneUnloadAtBarge');
   if (!r) return null;
   if (dist(ship.pos, s.carrier.pos) <= r.param) return null;
@@ -110,8 +229,12 @@ export function drone(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'g
   if (ship.mode === 'idle' || !a || a.ore <= 0) {
     a = pickAsteroid(s, ship, ctx, mining) ?? undefined;
     if (!a) {
+      const bay = bayBarge(ship, ctx);
       if (ship.cargo > 0) ship.mode = 'toCarrier';
-      else goHome(s, ship, dt);
+      else if (bay) {
+        // Dock in the barge's bay instead of flying back to the carrier.
+        if (moveToward(ship.pos, bay.pos, speed(s, ship) * dt, 2)) ship.mode = 'carried';
+      } else goHome(s, ship, dt);
       return;
     }
     ship.targetId = a.id;
@@ -241,11 +364,34 @@ export function hauler(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
     }
     return;
   }
+  if (ship.mode === 'toDropoff') {
+    const c = s.containers.find((x) => x.id === ship.targetId);
+    if (!c) {
+      ship.mode = ship.cargo > 0 ? 'toCarrier' : 'idle';
+      return;
+    }
+    if (moveToward(ship.pos, c.pos, v, 2.5)) {
+      const amt = Math.min(c.cargo, cap - ship.cargo);
+      const val = (c.cargoValue / c.cargo) * amt;
+      ship.cargo += amt;
+      ship.cargoValue += val;
+      c.cargo -= amt;
+      c.cargoValue -= val;
+      ship.mode = 'toCarrier';
+    }
+    return;
+  }
   const job = haulerJob(s, ship, ctx);
   if (job) {
     ship.mode = 'toBarge';
     ship.targetId = job.id;
     ctx.haulerClaims.add(job.id);
+    return;
+  }
+  const wreck = ship.cargo < cap * 0.5 ? salvageJob(s, ship) : null;
+  if (wreck) {
+    ship.mode = 'toDropoff';
+    ship.targetId = wreck.id;
     return;
   }
   if (ship.cargo > 0) {

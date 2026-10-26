@@ -76,7 +76,8 @@ export type ShipMode =
   | 'patrol'
   | 'repairing'
   | 'retreat'
-  | 'recall';
+  | 'recall'
+  | 'carried'; // drone riding in a barge's drone bay
 
 export interface Vec3 {
   x: number;
@@ -99,6 +100,8 @@ export interface Ship {
   targetId: number; // asteroid / ship / pirate id, -1 for none
   escortId: number; // ship this one is guarding
   station: Vec3 | null; // where a barge parks
+  /** Barge whose drone bay this drone is based at, -1 for the carrier. */
+  bargeId: number;
   fireCooldown: number;
 }
 
@@ -123,6 +126,16 @@ export interface Asteroid {
   radius: number;
   /** Seconds until a depleted rock refills (field keeps refilling). */
   respawn: number;
+}
+
+/** Cargo dropped by a destroyed barge; haulers salvage it before it decays. */
+export interface Container {
+  id: number;
+  pos: Vec3;
+  cargo: number;
+  cargoValue: number;
+  /** Seconds until it decays. */
+  ttl: number;
 }
 
 export interface Hazard {
@@ -232,6 +245,7 @@ export interface GameState {
   ships: Ship[];
   pirates: Pirate[];
   asteroids: Asteroid[];
+  containers: Container[];
   hazards: Hazard[];
   systems: StarSystem[];
   systemId: number;

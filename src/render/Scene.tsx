@@ -18,6 +18,7 @@ import { COVER_RADIUS, H2_STORM_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
 import { SHIP_CLASSES, type Vec3 } from '../sim/types';
 import { AsteroidField } from './AsteroidField';
+import { Containers } from './Containers';
 import { Fleet } from './Fleet';
 import { GAS_FRAG, GAS_VERT, NEBULA_FRAG, NEBULA_VERT } from './geometry';
 import { FrameCap, RenderStats } from './RenderLoop';
@@ -352,6 +353,7 @@ const ICON_COLORS: Record<string, THREE.Color> = {
   ),
   pirate: new THREE.Color('#ff3030').multiplyScalar(2),
   carrier: new THREE.Color('#ffffff').multiplyScalar(2),
+  container: new THREE.Color('#f2b632').multiplyScalar(2),
 };
 
 function Tactical({ on }: { on: boolean }) {
@@ -379,6 +381,7 @@ function Tactical({ on }: { on: boolean }) {
       if (sh.mode !== 'docked' && n < 2048)
         put(lerpPos(sh.id, sh.pos, a, tmp), ICON_COLORS[sh.cls]);
     for (const p of s.pirates) if (n < 2048) put(lerpPos(p.id, p.pos, a, tmp), ICON_COLORS.pirate);
+    for (const c of s.containers) if (n < 2048) put(c.pos, ICON_COLORS.container);
     geo.setDrawRange(0, n);
     pos.needsUpdate = true;
     col.needsUpdate = true;
@@ -431,6 +434,7 @@ export const Scene = memo(function Scene({
       <GasGiant />
       <AsteroidField lodDistance={quality === 'high' ? 140 : 80} />
       <Hazards />
+      <Containers />
       <Carrier />
       <Fleet lodDistance={quality === 'high' ? 120 : 70} />
       <Beams />

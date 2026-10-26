@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAVE_VERSION, newGame } from '../sim/state';
 import saveV1 from './fixtures/save-v1.json';
 import saveV2 from './fixtures/save-v2.json';
+import saveV3 from './fixtures/save-v3.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
   SAVE_BACKUP_FAILED_NOTICE,
@@ -115,6 +116,18 @@ describe('migrate', () => {
     expect(fromV2.state.fields).toEqual({});
     expect(fromV2.state.automation.autoRebuild).toBe(true);
     expect(fromV2.state.automation.creditFloor).toBe(100);
+  });
+
+  it('migrates a v3 save to v4 with no containers and carrier-based drones', () => {
+    expect(saveV3.version).toBe(3);
+    const fromV3 = migrate(saveV3);
+    expect(fromV3.ok).toBe(true);
+    if (!fromV3.ok) return;
+    expect(fromV3.state.version).toBe(SAVE_VERSION);
+    expect(fromV3.state.containers).toEqual([]);
+    expect(fromV3.state.fields[1]).toEqual({ left: 10, rocks: [[0, 0.5, 0]] });
+    for (const sh of fromV3.state.ships) expect(sh.bargeId).toBe(-1);
+    expect(saveV3).not.toHaveProperty('containers');
   });
 
   it('applies one migration step per version, in order', () => {

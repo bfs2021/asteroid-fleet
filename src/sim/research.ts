@@ -266,7 +266,7 @@ export const RESEARCH: ResearchNode[] = [
     id: 'bargeBay',
     branch: 'barge',
     name: 'Barge drone bay',
-    desc: 'Barges get +50 % hull and repair docked drones',
+    desc: 'Barges get +50 % hull, repair docked drones and carry a drone that launches from and docks at the barge',
     maxLevel: 1,
     cost: () => 3,
   },

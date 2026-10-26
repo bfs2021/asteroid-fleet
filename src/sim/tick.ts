@@ -15,7 +15,18 @@ import {
   type Ctx,
 } from './ctx';
 import { rule } from './doctrine';
-import { barge, drone, harvester, hauler, haulerJob } from './mining';
+import {
+  assignBargeBay,
+  barge,
+  boardBargeBay,
+  carried,
+  decayContainers,
+  drone,
+  dropContainer,
+  harvester,
+  hauler,
+  haulerJob,
+} from './mining';
 import { copy, moveAway, onSphere, rand } from './math';
 import { lvl } from './research';
 import { log, maxHull } from './state';
@@ -52,12 +63,17 @@ export function step(s: GameState, dt = DT) {
       ship.hull = Math.min(mh, ship.hull + dockRepair(s, ctx, ship) * mh * dt);
       continue;
     }
+    if (ship.mode === 'carried') {
+      carried(s, ship, dt, ctx);
+      continue;
+    }
     behave(s, ship, dt, ctx);
   }
   pirateStep(s, dt, ctx);
   hazards(s, dt);
   refine(s, dt, ctx);
   field(s, dt);
+  decayContainers(s, dt);
   reserves(s, dt, ctx);
   automation(s, dt);
   drift(s, dt);
@@ -66,7 +82,10 @@ export function step(s: GameState, dt = DT) {
   let alive = 0;
   for (const sh of s.ships) {
     if (sh.hull > 0) s.ships[alive++] = sh;
-    else destroyShip(s, sh, 'destroyed');
+    else {
+      if (sh.cls === 'barge') dropContainer(s, sh);
+      destroyShip(s, sh, 'destroyed');
+    }
   }
   s.ships.length = alive;
   const tier = s.systems[s.systemId].tier;
@@ -108,7 +127,7 @@ function wantsLaunch(s: GameState, ship: Ship, ctx: Ctx): boolean {
       // Barges launch only once the zone is secured.
       return s.pirates.length === 0;
     case 'hauler':
-      return !rule(s, 'haulerPark') || haulerJob(s, ship, ctx) !== null;
+      return !rule(s, 'haulerPark') || haulerJob(s, ship, ctx) !== null || s.containers.length > 0;
     case 'harvester':
       return sys.gasGiant && lvl(s, 'fusion') > 0 && s.pirates.length === 0;
     case 'repair':
@@ -140,6 +159,8 @@ function launch(s: GameState, dt: number, ctx: Ctx) {
       y: s.carrier.pos.y + off.y,
       z: s.carrier.pos.z + off.z,
     };
+    if (next.cls === 'barge') boardBargeBay(s, next);
+    else assignBargeBay(s, next, ctx);
     h.launchTimer = HANGAR_TYPES[h.type].launchInterval;
   }
 }

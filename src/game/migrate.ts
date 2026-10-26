@@ -50,6 +50,12 @@ export const migrations: Record<number, Migration> = {
       for (const sh of save.ships) if (sh && typeof sh === 'object') sh.modules ??= [];
     return save;
   },
+  // v6: older saves never had miningIncomeAvg, so offline time paid nothing (#38).
+  5: (save) => {
+    if (typeof save.miningIncomeAvg !== 'number' || !Number.isFinite(save.miningIncomeAvg))
+      save.miningIncomeAvg = 0;
+    return save;
+  },
 };
 
 export function applyMigrationSteps(
@@ -120,6 +126,12 @@ function validateSave(save: SaveBlob): MigrateResult {
   if (!isRecord(save.automation)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.wave) || !isTimer(save.wave.timer)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.storm) || !isTimer(save.storm.timer)) return { ok: false, reason: 'corrupt' };
+
+  // NaN is stored as null; a non-finite income would poison the rolling average.
+  if (typeof save.miningIncomeAvg !== 'number' || !Number.isFinite(save.miningIncomeAvg))
+    save.miningIncomeAvg = 0;
+  if (typeof save.credits !== 'number' || !Number.isFinite(save.credits))
+    return { ok: false, reason: 'corrupt' };
 
   const state = save as unknown as GameState;
   // JSON turns Infinity into null; restore "no timer".

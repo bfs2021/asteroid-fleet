@@ -25,7 +25,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 const NAMES = [
   'Kestrel',

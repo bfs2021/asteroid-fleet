@@ -59,6 +59,8 @@ v4 added `containers` (cargo dropped by destroyed barges, salvaged by haulers un
 
 v5 added `Ship.modules` (fitted modules, at most `MODULE_SLOTS[cls]`) and `recon` (clusters surveyed, rich vein asteroid ids and charted hazard indices in the current system; cleared on every jump).
 
+v6 (#38) guarantees `miningIncomeAvg` is a finite number: older saves lacked it, which made offline settlement pay nothing. `save-v5.json` is the fixture without it, and `validateSave` also repairs a non-finite value.
+
 A save that is corrupt, from a newer version than this build, or otherwise unknown is not deleted and not overwritten. The raw text is copied to `asteroid-fleet-save-backup` in both IndexedDB and the localStorage fallback (the same pair of stores as the primary key `asteroid-fleet-save`). A later failure that is byte-for-byte the same does not rewrite that copy. A different failure is written to `asteroid-fleet-save-backup-<timestamp>` so the earlier backup stays. The game shows "Your save could not be loaded and was backed up." and pauses automatic saving so the original stays put. If both stores reject the copy, it shows "could not be backed up" instead, and a reset or import then warns that the save will be lost. A hard reset or a successful import may reuse the primary slot; backup keys are left alone. A bad import is rejected and does not write any key.
 
 ## Layout

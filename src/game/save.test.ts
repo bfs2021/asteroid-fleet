@@ -4,6 +4,7 @@ import saveV1 from './fixtures/save-v1.json';
 import saveV2 from './fixtures/save-v2.json';
 import saveV3 from './fixtures/save-v3.json';
 import saveV4 from './fixtures/save-v4.json';
+import saveV5 from './fixtures/save-v5.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
   SAVE_BACKUP_FAILED_NOTICE,
@@ -141,6 +142,23 @@ describe('migrate', () => {
     expect(fromV4.state.containers).toHaveLength(1);
     for (const sh of fromV4.state.ships) expect(sh.modules).toEqual([]);
     expect(saveV4).not.toHaveProperty('recon');
+  });
+
+  it('migrates a v5 save without miningIncomeAvg to a finite value (#38)', () => {
+    expect(saveV5.version).toBe(5);
+    expect(saveV5).not.toHaveProperty('miningIncomeAvg');
+    const r = migrate(saveV5);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.state.version).toBe(SAVE_VERSION);
+    expect(r.state.miningIncomeAvg).toBe(0);
+  });
+
+  it('repairs a non-finite miningIncomeAvg and keeps a finite one', () => {
+    const bad = migrate({ ...structuredClone(saveV5), version: 6, miningIncomeAvg: null });
+    expect(bad.ok && bad.state.miningIncomeAvg).toBe(0);
+    const good = migrate({ ...structuredClone(saveV5), version: 6, miningIncomeAvg: 7 });
+    expect(good.ok && good.state.miningIncomeAvg).toBe(7);
   });
 
   it('applies one migration step per version, in order', () => {

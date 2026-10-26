@@ -5,7 +5,9 @@ describe('parseSettings', () => {
   it('falls back to defaults for missing or junk input', () => {
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings([1])).toEqual(DEFAULT_SETTINGS);
-    expect(parseSettings({ uiScale: 7, quality: 'ultra', bloom: 'yes' })).toEqual(DEFAULT_SETTINGS);
+    expect(parseSettings({ uiScale: 7, quality: 'ultra', bloom: 'yes', fpsCap: 45 })).toEqual(
+      DEFAULT_SETTINGS,
+    );
   });
 
   it('keeps valid values and clamps volumes', () => {
@@ -13,6 +15,7 @@ describe('parseSettings', () => {
       uiScale: 1.15,
       quality: 'low',
       bloom: false,
+      fpsCap: 60,
       masterVolume: 3,
       sfxVolume: -1,
     });
@@ -20,6 +23,7 @@ describe('parseSettings', () => {
       uiScale: 1.15,
       quality: 'low',
       bloom: false,
+      fpsCap: 60,
       masterVolume: 1,
       sfxVolume: 0,
     });

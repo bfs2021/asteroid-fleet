@@ -16,178 +16,28 @@ import { focus, isDoubleMiss } from './focus';
 import { engine, lerpPos } from '../game/engine';
 import { COVER_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
-import { SHIP_CLASSES, type ShipClass, type Vec3 } from '../sim/types';
-import {
-  GAS_FRAG,
-  GAS_VERT,
-  NEBULA_FRAG,
-  NEBULA_VERT,
-  asteroidGeometry,
-  shipGeometry,
-} from './geometry';
+import { SHIP_CLASSES, type Vec3 } from '../sim/types';
+import { AsteroidField } from './AsteroidField';
+import { Fleet } from './Fleet';
+import { GAS_FRAG, GAS_VERT, NEBULA_FRAG, NEBULA_VERT } from './geometry';
+import { FrameCap, RenderStats } from './RenderLoop';
 
 const Effects = lazy(() => import('./Effects'));
 
-// Sized for the 1000-ship sim cap; the buffers are allocated once per layer.
-const MAX_PER_CLASS = 1000;
-const MAX_ASTEROIDS = 1000;
 const dummy = new THREE.Object3D();
 const tmp: Vec3 = { x: 0, y: 0, z: 0 };
-const tmpV = new THREE.Vector3();
-const headings = new Map<number, THREE.Vector3>();
-
-/** Drop headings of destroyed ships; `engine.prev` only holds live ids. */
-function pruneHeadings() {
-  if (headings.size <= engine.prev.size + 64) return;
-  for (const id of headings.keys()) if (!engine.prev.has(id)) headings.delete(id);
-}
-
 /** Re-renders only when the system changes, not on every 5 Hz UI tick. */
 function useSystemId(): number {
   return useSyncExternalStore(engine.subscribe, () => engine.state.systemId);
-}
-
-function heading(id: number, cur: Vec3): THREE.Vector3 {
-  const prev = engine.prev.get(id);
-  let h = headings.get(id);
-  if (!h) {
-    h = new THREE.Vector3(0, 0, 1);
-    headings.set(id, h);
-  }
-  if (prev) {
-    tmpV.set(cur.x - prev.x, cur.y - prev.y, cur.z - prev.z);
-    if (tmpV.lengthSq() > 1e-6) h.lerp(tmpV.normalize(), 0.25).normalize();
-  }
-  return h;
 }
 
 export interface ViewOptions {
   tactical: boolean;
   quality: 'high' | 'low';
   bloom: boolean;
+  /** Frame-rate cap applied in low quality; 0 is uncapped. */
+  fpsCap: number;
   onAutoTactical: (on: boolean) => void;
-}
-
-function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
-  const mesh = useRef<THREE.InstancedMesh>(null);
-  const glow = useRef<THREE.InstancedMesh>(null);
-  const ids = useRef(new Int32Array(MAX_PER_CLASS));
-  const geo = useMemo(() => shipGeometry(cls), [cls]);
-  const color = cls === 'pirate' ? '#ff3b3b' : SHIP_STATS[cls].color;
-  const glowColor = useMemo(
-    () => new THREE.Color(cls === 'pirate' ? '#ff4020' : '#6fc8ff').multiplyScalar(4),
-    [cls],
-  );
-  const len = cls === 'barge' ? 2.4 : cls === 'hauler' || cls === 'harvester' ? 1.6 : 1;
-
-  useFrame(() => {
-    const m = mesh.current;
-    const g = glow.current;
-    if (!m || !g) return;
-    const s = engine.state;
-    const a = engine.alpha();
-    if (cls === 'pirate') pruneHeadings();
-    let n = 0;
-    const list = cls === 'pirate' ? s.pirates : s.ships;
-    for (const e of list) {
-      if (cls !== 'pirate') {
-        const sh = e as (typeof s.ships)[number];
-        if (sh.cls !== cls || sh.mode === 'docked') continue;
-      }
-      if (n >= MAX_PER_CLASS) break;
-      ids.current[n] = e.id;
-      lerpPos(e.id, e.pos, a, tmp);
-      const h = heading(e.id, e.pos);
-      dummy.position.set(tmp.x, tmp.y, tmp.z);
-      dummy.lookAt(tmp.x + h.x, tmp.y + h.y, tmp.z + h.z);
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      m.setMatrixAt(n, dummy.matrix);
-      dummy.position.set(tmp.x - h.x * len, tmp.y - h.y * len, tmp.z - h.z * len);
-      dummy.scale.setScalar(cls === 'barge' ? 0.5 : 0.22);
-      dummy.updateMatrix();
-      g.setMatrixAt(n, dummy.matrix);
-      n++;
-    }
-    m.count = n;
-    g.count = n;
-    m.instanceMatrix.needsUpdate = true;
-    g.instanceMatrix.needsUpdate = true;
-  });
-
-  return (
-    <>
-      <instancedMesh
-        ref={mesh}
-        args={[geo, undefined, MAX_PER_CLASS]}
-        frustumCulled={false}
-        onClick={(e) => {
-          if (cls === 'pirate' || e.instanceId === undefined) return;
-          e.stopPropagation();
-          focus.set(ids.current[e.instanceId]);
-        }}
-      >
-        <meshStandardMaterial
-          color={color}
-          emissive={color}
-          emissiveIntensity={0.35}
-          metalness={0.4}
-          roughness={0.45}
-          flatShading
-        />
-      </instancedMesh>
-      <instancedMesh
-        ref={glow}
-        args={[undefined, undefined, MAX_PER_CLASS]}
-        frustumCulled={false}
-        raycast={() => null}
-      >
-        <sphereGeometry args={[1, 8, 6]} />
-        <meshBasicMaterial color={glowColor} toneMapped={false} />
-      </instancedMesh>
-    </>
-  );
-}
-
-const ORE_COLORS = [
-  new THREE.Color('#8b7d6b'),
-  new THREE.Color('#7f8fa3'),
-  new THREE.Color('#5fb3c9'),
-  new THREE.Color('#b77be0'),
-  new THREE.Color('#ff7df0'),
-];
-
-function Asteroids() {
-  const mesh = useRef<THREE.InstancedMesh>(null);
-  const geo = useMemo(() => asteroidGeometry(), []);
-  const c = useMemo(() => new THREE.Color(), []);
-  useFrame((st) => {
-    const m = mesh.current;
-    if (!m) return;
-    const t = st.clock.elapsedTime;
-    let n = 0;
-    for (const a of engine.state.asteroids) {
-      if (a.ore <= 0) continue;
-      if (n >= MAX_ASTEROIDS) break;
-      const k = 0.45 + 0.55 * (a.ore / a.maxOre);
-      dummy.position.set(a.pos.x, a.pos.y, a.pos.z);
-      dummy.rotation.set(a.id * 0.7 + t * 0.05 * ((a.id % 3) - 1), a.id * 1.3 + t * 0.03, 0);
-      dummy.scale.setScalar(a.radius * k);
-      dummy.updateMatrix();
-      m.setMatrixAt(n, dummy.matrix);
-      const tier = a.value < 2 ? 0 : a.value < 5 ? 1 : a.value < 15 ? 2 : a.value < 40 ? 3 : 4;
-      m.setColorAt(n, c.copy(ORE_COLORS[tier]));
-      n++;
-    }
-    m.count = n;
-    m.instanceMatrix.needsUpdate = true;
-    if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  });
-  return (
-    <instancedMesh ref={mesh} args={[geo, undefined, MAX_ASTEROIDS]} frustumCulled={false}>
-      <meshStandardMaterial roughness={0.95} metalness={0.05} flatShading />
-    </instancedMesh>
-  );
 }
 
 const MAX_SEG = 1024;
@@ -543,6 +393,7 @@ export const Scene = memo(function Scene({
   tactical,
   quality,
   bloom,
+  fpsCap,
   onAutoTactical,
 }: ViewOptions) {
   const [auto, setAuto] = useState(false);
@@ -561,15 +412,15 @@ export const Scene = memo(function Scene({
       <color attach="background" args={['#020308']} />
       <Sky />
       <GasGiant />
-      <Asteroids />
+      <AsteroidField lodDistance={quality === 'high' ? 140 : 80} />
       <Hazards />
       <Carrier />
-      {[...SHIP_CLASSES, 'pirate' as const].map((c) => (
-        <ShipLayer key={c} cls={c} />
-      ))}
+      <Fleet lodDistance={quality === 'high' ? 120 : 70} />
       <Beams />
       <Explosions />
       <Tactical on={tactical || auto} />
+      <RenderStats />
+      {quality === 'low' && <FrameCap fps={fpsCap} />}
       <CameraRig tactical={tactical} onAutoTactical={onAuto} />
       {quality === 'high' && (
         <Suspense fallback={null}>

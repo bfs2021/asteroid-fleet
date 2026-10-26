@@ -131,7 +131,10 @@ export function Hud({
           >
             Tactical
           </button>
-          <button onClick={onQuality} title="Low quality turns off bloom and caps resolution">
+          <button
+            onClick={onQuality}
+            title="Low quality turns off bloom and caps resolution and frame rate"
+          >
             {quality === 'high' ? 'HQ' : 'LQ'}
           </button>
         </div>

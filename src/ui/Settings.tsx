@@ -8,7 +8,7 @@ import {
   exportSaveFile,
   saveOverwriteBlocked,
 } from '../game/save';
-import { UI_SCALES, updateSettings, useSettings } from '../game/settings';
+import { FPS_CAPS, UI_SCALES, updateSettings, useSettings } from '../game/settings';
 import {
   deleteSlot,
   getActiveSlot,
@@ -84,7 +84,7 @@ function VisualsTab() {
           onChange={(e) => updateSettings({ quality: e.target.value === 'low' ? 'low' : 'high' })}
         >
           <option value="high">High</option>
-          <option value="low">Low (no post effects, capped resolution)</option>
+          <option value="low">Low (no post effects, capped resolution and frame rate)</option>
         </select>
       </Field>
       <Field label="Bloom">
@@ -94,6 +94,19 @@ function VisualsTab() {
           disabled={s.quality === 'low'}
           onChange={(e) => updateSettings({ bloom: e.target.checked })}
         />
+      </Field>
+      <Field label="Frame-rate cap (low quality)">
+        <select
+          value={s.fpsCap}
+          disabled={s.quality === 'high'}
+          onChange={(e) => updateSettings({ fpsCap: Number(e.target.value) })}
+        >
+          {FPS_CAPS.map((v) => (
+            <option key={v} value={v}>
+              {v ? `${v} fps` : 'Uncapped'}
+            </option>
+          ))}
+        </select>
       </Field>
     </>
   );

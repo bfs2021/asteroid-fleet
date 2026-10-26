@@ -202,6 +202,7 @@ export function App() {
             tactical={tactical}
             quality={settings.quality}
             bloom={settings.bloom}
+            fpsCap={settings.fpsCap}
             onAutoTactical={setAutoTactical}
           />
         </SceneBoundary>

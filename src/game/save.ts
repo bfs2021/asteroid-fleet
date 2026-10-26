@@ -33,8 +33,12 @@ export function isBackupKey(key: string): boolean {
   return key === SAVE_BACKUP_KEY || key.startsWith(`${SAVE_BACKUP_KEY}-`);
 }
 
-/** At least one store kept the bytes. A read-back guards a write that did not stick. */
-async function writeStore(key: string, json: string): Promise<boolean> {
+/**
+ * At least one store kept the bytes. A read-back guards a write that did not stick.
+ * `mirror: false` skips localStorage once IndexedDB holds the bytes, so timestamped
+ * backups cannot crowd out the primary copy kept there.
+ */
+async function writeStore(key: string, json: string, mirror = true): Promise<boolean> {
   let idbOk = false;
   try {
     await set(key, json);
@@ -42,6 +46,7 @@ async function writeStore(key: string, json: string): Promise<boolean> {
   } catch {
     idbOk = false;
   }
+  if (idbOk && !mirror) return true;
   let localOk = false;
   try {
     localStorage.setItem(key, json);
@@ -52,7 +57,18 @@ async function writeStore(key: string, json: string): Promise<boolean> {
   return idbOk || localOk;
 }
 
+/**
+ * Text for a non-string IndexedDB value so it can be backed up. Bytes decode as UTF-8,
+ * other values use JSON, and anything JSON cannot hold (functions, BigInt, symbols)
+ * falls back to `String`. The fallback is lossy, so it is only ever kept as corrupt data.
+ */
 function textFromUnknown(value: unknown): string {
+  if (value instanceof ArrayBuffer) return new TextDecoder().decode(value);
+  if (ArrayBuffer.isView(value)) {
+    return new TextDecoder().decode(
+      new Uint8Array(value.buffer, value.byteOffset, value.byteLength),
+    );
+  }
   try {
     const text = JSON.stringify(value);
     if (typeof text === 'string') return text;
@@ -81,6 +97,14 @@ async function readPrimary(): Promise<{ text: string; forceCorrupt: boolean } | 
     /* storage blocked */
   }
   return null;
+}
+
+/**
+ * The raw primary save as stored, for the "download unreadable save" escape hatch.
+ * Returns null when there is nothing stored.
+ */
+export async function readPrimaryText(): Promise<string | null> {
+  return (await readPrimary())?.text ?? null;
 }
 
 async function eachBackup(onValue: (key: string, value: unknown) => void): Promise<void> {
@@ -145,7 +169,7 @@ async function backupRaw(json: string): Promise<boolean> {
   preservePrimary = true;
   const key = await chooseBackupKey(json);
   if (key === null) return true;
-  return writeStore(key, json);
+  return writeStore(key, json, key === SAVE_BACKUP_KEY);
 }
 
 function unreadable(reason: SaveFailure, backedUp: boolean): LoadResult {

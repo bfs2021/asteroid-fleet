@@ -114,7 +114,7 @@ export function fighter(s: GameState, ship: Ship, dt: number, ctx: Ctx, engageme
   if (target) {
     ship.mode = 'attack';
     ship.targetId = target.id;
-    const range = SHIP_STATS.fighter.range;
+    const range = SHIP_STATS.fighter.range * (1 + 0.2 * lvl(s, 'fighterRange'));
     moveToward(ship.pos, target.pos, v, range * 0.7);
     if (dist(ship.pos, target.pos) <= range) {
       target.hull -= fighterDamage(s, ctx, ship) * dt;
@@ -168,7 +168,7 @@ export function repairDrone(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
   ship.mode = 'repairing';
   const range = SHIP_STATS.repair.range;
   moveToward(ship.pos, patient.pos, v, range * 0.6);
-  const heal = 7 * (1 + 0.3 * lvl(s, 'repair')) * dt;
+  const heal = 7 * (1 + 0.3 * lvl(s, 'repair')) * (1 + 0.25 * lvl(s, 'repairBeam')) * dt;
   const nano = lvl(s, 'repairNano') > 0;
   if (nano) {
     for (const o of ctx.ships.values()) {

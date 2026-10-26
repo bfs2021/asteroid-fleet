@@ -195,12 +195,19 @@ export function cargoCap(s: GameState, cls: ShipClass): number {
   const base = SHIP_STATS[cls].cargo;
   if (cls === 'barge') return base * (1 + 0.2 * lvl(s, 'bargeCap'));
   if (cls === 'drone') return base * (1 + 0.2 * lvl(s, 'droneCargo'));
+  if (cls === 'hauler') return base * (1 + 0.25 * lvl(s, 'haulerHold'));
+  if (cls === 'harvester') return base * (1 + 0.25 * lvl(s, 'harvestCargo'));
   return base;
 }
 
 export function speed(s: GameState, ship: Ship): number {
   let v = SHIP_STATS[ship.cls].speed;
   if (ship.cls === 'hauler') v *= 1 + 0.12 * lvl(s, 'haulSpeed');
+  else if (ship.cls === 'drone') v *= 1 + 0.15 * lvl(s, 'droneSpeed');
+  else if (ship.cls === 'barge') v *= 1 + 0.25 * lvl(s, 'bargeThrust');
+  else if (ship.cls === 'scout') v *= 1 + 0.25 * lvl(s, 'scoutSpeed');
+  else if (ship.cls === 'repair') v *= 1 + 0.25 * lvl(s, 'repairSpeed');
+  else if (ship.cls === 'harvester') v *= 1 + 0.2 * lvl(s, 'harvestSpeed');
   return v;
 }
 
@@ -254,6 +261,7 @@ export function nearestPirate(s: GameState, p: Vec3, within: number): Pirate | n
 
 export function damageShip(s: GameState, ship: Ship, dmg: number) {
   if (ship.cls === 'hauler' && lvl(s, 'haulerArmor') > 0) dmg *= 0.6;
+  if (ship.cls === 'barge') dmg *= 1 - 0.25 * lvl(s, 'bargeShell');
   ship.hull -= dmg;
 }
 

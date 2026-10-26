@@ -154,6 +154,39 @@ export const RESEARCH: ResearchNode[] = [
     cost: lin(2, 1),
     requires: 'reserveDrone',
   },
+  {
+    id: 'rare',
+    branch: 'Mining',
+    name: 'Rare strikes',
+    desc: '+4 % chance per level that a new asteroid is rare ore (x2.5 value)',
+    maxLevel: 5,
+    cost: lin(2, 1),
+    requires: 'yield',
+  },
+  {
+    id: 'sublight',
+    branch: 'Carrier',
+    name: 'Sublight drive',
+    desc: '+20 % carrier drift speed',
+    maxLevel: 4,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'reserveBarge',
+    branch: 'Reserves',
+    name: 'Barge reserve',
+    desc: 'Keep at least 1 barge per level; one rebuilt every 8 min',
+    maxLevel: 2,
+    cost: lin(3, 3),
+  },
+  {
+    id: 'reserveHauler',
+    branch: 'Reserves',
+    name: 'Hauler reserve',
+    desc: 'Keep at least 1 hauler per level; one rebuilt every 5 min',
+    maxLevel: 2,
+    cost: lin(2, 2),
+  },
   // Per-class branches feed build identity on the hangar board.
   {
     id: 'droneSwarm',
@@ -203,6 +236,129 @@ export const RESEARCH: ResearchNode[] = [
     maxLevel: 1,
     cost: () => 3,
   },
+  {
+    id: 'droneSpeed',
+    branch: 'drone',
+    name: 'Ion drives',
+    desc: '+15 % drone speed',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'droneHull',
+    branch: 'drone',
+    name: 'Hardened drills',
+    desc: '+30 % drone hull',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'bargeThrust',
+    branch: 'barge',
+    name: 'Barge thrusters',
+    desc: '+25 % barge speed',
+    maxLevel: 2,
+    cost: lin(2, 1),
+  },
+  {
+    id: 'bargeShell',
+    branch: 'barge',
+    name: 'Reinforced shell',
+    desc: '-25 % damage to barges',
+    maxLevel: 2,
+    cost: lin(2, 2),
+  },
+  {
+    id: 'haulerHold',
+    branch: 'hauler',
+    name: 'Extended holds',
+    desc: '+25 % hauler cargo',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'haulerHull',
+    branch: 'hauler',
+    name: 'Bulkheads',
+    desc: '+40 % hauler hull',
+    maxLevel: 2,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'fighterRange',
+    branch: 'fighter',
+    name: 'Long-range optics',
+    desc: '+20 % fighter range',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'fighterHull',
+    branch: 'fighter',
+    name: 'Ablative plating',
+    desc: '+25 % fighter hull',
+    maxLevel: 3,
+    cost: lin(1, 2),
+  },
+  {
+    id: 'scoutSpeed',
+    branch: 'scout',
+    name: 'Scout engines',
+    desc: '+25 % scout speed',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'scoutSurvey',
+    branch: 'scout',
+    name: 'Deep survey',
+    desc: 'Scouts raise the rich-ore bonus of respawned asteroids by +50 %',
+    maxLevel: 1,
+    cost: () => 3,
+  },
+  {
+    id: 'repairBeam',
+    branch: 'repair',
+    name: 'Focused beams',
+    desc: '+25 % repair-drone healing',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'repairSpeed',
+    branch: 'repair',
+    name: 'Repair thrusters',
+    desc: '+25 % repair-drone speed',
+    maxLevel: 3,
+    cost: lin(1, 1),
+  },
+  {
+    id: 'harvestCargo',
+    branch: 'harvester',
+    name: 'Larger tanks',
+    desc: '+25 % harvester H2 capacity',
+    maxLevel: 3,
+    cost: lin(1, 1),
+    requires: 'fusion',
+  },
+  {
+    id: 'harvestSpeed',
+    branch: 'harvester',
+    name: 'Skimmer thrusters',
+    desc: '+20 % harvester speed',
+    maxLevel: 3,
+    cost: lin(1, 1),
+    requires: 'fusion',
+  },
+  {
+    id: 'harvestHull',
+    branch: 'harvester',
+    name: 'Gas-proof hull',
+    desc: '+30 % harvester hull',
+    maxLevel: 2,
+    cost: lin(1, 2),
+    requires: 'fusion',
+  },
 ];
 
 export const RESEARCH_BY_ID = Object.fromEntries(RESEARCH.map((r) => [r.id, r])) as Record<
@@ -212,6 +368,17 @@ export const RESEARCH_BY_ID = Object.fromEntries(RESEARCH.map((r) => [r.id, r]))
 
 export function lvl(s: GameState, id: string): number {
   return s.researchLevels[id] ?? 0;
+}
+
+/** Reserve classes, their minimum count and rebuild cooldown (seconds). */
+export function reserveDefs(s: GameState): [ShipClass, number, number][] {
+  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
+  return [
+    ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
+    ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
+    ['barge', lvl(s, 'reserveBarge'), 480 * cd],
+    ['hauler', lvl(s, 'reserveHauler'), 300 * cd],
+  ];
 }
 
 export function canBuyResearch(s: GameState, id: string): boolean {

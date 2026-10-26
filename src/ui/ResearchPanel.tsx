@@ -6,7 +6,7 @@ import { RESEARCH, canBuyResearch, lvl, type Branch } from '../sim/research';
 import { SHIP_CLASSES, type ShipClass } from '../sim/types';
 import { fmt } from './Hud';
 
-const GLOBAL: Branch[] = ['Logistics', 'Mining', 'Combat', 'Carrier', 'Reserves'];
+const GLOBAL: Branch[] = ['Logistics', 'Mining', 'Combat', 'Carrier', 'Reserves', 'Automation'];
 
 export function ResearchPanel() {
   const s = useGame();

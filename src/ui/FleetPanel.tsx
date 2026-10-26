@@ -9,6 +9,7 @@ import {
   NEW_HANGAR_COST,
   SHIP_STATS,
 } from '../sim/config';
+import { autoBuyUnlocked, autoRebuildUnlocked } from '../sim/automation';
 import { effectiveStance, stanceSource } from '../sim/doctrine';
 import { maxHull } from '../sim/state';
 import { cargoCap } from '../sim/tick';
@@ -201,6 +202,35 @@ function HangarBoard({
       <div className="board" style={{ ['--slots' as string]: h.slots }} onClick={onSelect}>
         {cells}
       </div>
+      {autoBuyUnlocked(s) && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <span className="blurb">Auto-buy target</span>
+          <div className="order">
+            {SHIP_CLASSES.filter((c) => s.unlocked.includes(c)).map((c) => (
+              <label key={c} title={`Keep this many ${SHIP_STATS[c].name.toLowerCase()}s here`}>
+                <i className="swatch" style={{ background: SHIP_STATS[c].color }} />
+                {SHIP_STATS[c].short}
+                <input
+                  type="number"
+                  min={0}
+                  max={MAX_HANGAR_SLOTS}
+                  value={h.target[c] ?? 0}
+                  aria-label={`Hangar ${h.id} ${SHIP_STATS[c].name} target`}
+                  style={{ width: '3.2em' }}
+                  onChange={(e) =>
+                    engine.dispatch({
+                      type: 'setHangarTarget',
+                      hangarId: h.id,
+                      cls: c,
+                      count: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="row" style={{ marginTop: 6 }}>
         <span className="blurb">Launch order</span>
         <div className="order">
@@ -264,6 +294,54 @@ function ShipDetail({ id }: { id: number }) {
   );
 }
 
+const setAutomation = (
+  patch: Partial<Pick<GameState['automation'], 'autoBuy' | 'autoRebuild' | 'creditFloor'>>,
+) => engine.dispatch({ type: 'setAutomation', patch });
+
+function AutomationBar() {
+  const s = useGame();
+  const a = s.automation;
+  const rebuild = autoRebuildUnlocked(s);
+  const buy = autoBuyUnlocked(s);
+  if (!rebuild && !buy) return null;
+  return (
+    <div className="row automation">
+      {rebuild && (
+        <label title="Pay to rebuild lost ships into their hangar">
+          <input
+            type="checkbox"
+            checked={a.autoRebuild}
+            onChange={(e) => setAutomation({ autoRebuild: e.target.checked })}
+          />
+          Auto-rebuild{a.rebuildQueue.length > 0 ? ` (${a.rebuildQueue.length} queued)` : ''}
+        </label>
+      )}
+      {buy && (
+        <label title="Buy toward each hangar's target with spare credits">
+          <input
+            type="checkbox"
+            checked={a.autoBuy}
+            onChange={(e) => setAutomation({ autoBuy: e.target.checked })}
+          />
+          Auto-buy
+        </label>
+      )}
+      <label title="Automation never spends credits below this">
+        Credit floor
+        <input
+          type="number"
+          min={0}
+          step={100}
+          value={a.creditFloor}
+          aria-label="Credit floor"
+          style={{ width: '6em' }}
+          onChange={(e) => setAutomation({ creditFloor: Number(e.target.value) })}
+        />
+      </label>
+    </div>
+  );
+}
+
 export function FleetPanel() {
   const s = useGame();
   const [sel, setSel] = useState(s.hangars[0]?.id ?? 1);
@@ -304,6 +382,7 @@ export function FleetPanel() {
         })}
       </div>
       <h3>Hangars</h3>
+      <AutomationBar />
       <p className="hint">
         Hangar slots are the board. Drag ships between slots; put a repair drone next to fighters or
         barges and they repair 3× faster when docked. Click a hangar to build into it.

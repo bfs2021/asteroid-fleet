@@ -1,6 +1,15 @@
+import { ZONE_RULE_UNLOCKS } from './config';
+import { unlockRule } from './state';
 import type { GameState, ShipClass } from './types';
 
-export type Branch = 'Logistics' | 'Mining' | 'Combat' | 'Carrier' | 'Reserves' | ShipClass;
+export type Branch =
+  | 'Logistics'
+  | 'Mining'
+  | 'Combat'
+  | 'Carrier'
+  | 'Reserves'
+  | 'Automation'
+  | ShipClass;
 
 export interface ResearchNode {
   id: string;
@@ -186,6 +195,32 @@ export const RESEARCH: ResearchNode[] = [
     desc: 'Keep at least 1 hauler per level; one rebuilt every 5 min',
     maxLevel: 2,
     cost: lin(2, 2),
+  },
+  // Automation is the reward for research: the fleet starts running itself.
+  {
+    id: 'tactics',
+    branch: 'Automation',
+    name: 'Tactical doctrine',
+    desc: 'Unlocks engagement stances and the frontier rule cards without reaching the frontier',
+    maxLevel: 1,
+    cost: () => 2,
+  },
+  {
+    id: 'autoRebuild',
+    branch: 'Automation',
+    name: 'Replacement orders',
+    desc: 'Lost ships of any class are rebuilt into their hangar, paid with credits',
+    maxLevel: 1,
+    cost: () => 3,
+  },
+  {
+    id: 'autoBuy',
+    branch: 'Automation',
+    name: 'Fleet requisition',
+    desc: 'Spare credits buy toward each hangar target composition',
+    maxLevel: 1,
+    cost: () => 4,
+    requires: 'autoRebuild',
   },
   // Per-class branches feed build identity on the hangar board.
   {
@@ -396,5 +431,6 @@ export function buyResearch(s: GameState, id: string): boolean {
   s.research -= node.cost(lvl(s, id));
   s.researchLevels[id] = lvl(s, id) + 1;
   if (id === 'fusion' && !s.unlocked.includes('harvester')) s.unlocked.push('harvester');
+  if (id === 'tactics') for (const rid of ZONE_RULE_UNLOCKS[2]) unlockRule(s, rid);
   return true;
 }

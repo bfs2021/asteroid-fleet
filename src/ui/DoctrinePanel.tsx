@@ -1,4 +1,5 @@
 import { engine, useGame } from '../game/engine';
+import { engagementUnlocked } from '../sim/automation';
 import { RULE_DEFS, SHIP_STATS, ZONE_RULE_UNLOCKS } from '../sim/config';
 import type { Engagement, MiningStance, RuleId, ShipClass, Stance, UnderFire } from '../sim/types';
 
@@ -42,7 +43,7 @@ function StanceRow({
         patch: { [key]: key === 'retreatAt' ? Number(raw) : raw },
       });
   };
-  const engageLocked = !s.unlocked.includes('fighter');
+  const engageLocked = !engagementUnlocked(s);
   const cell = (key: keyof Stance, opts: [string | number, string][], disabled = false) => {
     const v = value[key];
     return (
@@ -153,7 +154,8 @@ export function DoctrinePanel() {
               {!unlocked && (
                 <span className="hint">
                   {' '}
-                  (unlocks in {tier === 2 ? 'the frontier' : 'deep space'})
+                  (unlocks in {tier === 2 ? 'the frontier or with tactical doctrine' : 'deep space'}
+                  )
                 </span>
               )}
             </div>

@@ -13,6 +13,7 @@ import {
   WARP_CHARGE,
   warpCost,
 } from './config';
+import { autoBuyUnlocked, autoRebuildUnlocked, engagementUnlocked } from './automation';
 import { moveShip as moveOnBoard } from './hangar';
 import { buyResearch as buyNode, lvl, reserveDefs } from './research';
 import { createShip, log, maxEnergy, newGame } from './state';
@@ -40,6 +41,11 @@ export type Command =
   | { type: 'setPower'; mode: GameState['powerMode'] }
   | { type: 'setCarrierStance'; stance: CarrierStance }
   | { type: 'buyResearch'; id: string }
+  | {
+      type: 'setAutomation';
+      patch: Partial<Pick<GameState['automation'], 'autoBuy' | 'autoRebuild' | 'creditFloor'>>;
+    }
+  | { type: 'setHangarTarget'; hangarId: number; cls: ShipClass; count: number }
   | { type: 'upgradeRefinery' };
 
 export const RETROFIT_COST = 800;
@@ -97,6 +103,7 @@ export function apply(s: GameState, c: Command): string | null {
         stance: {},
         launchOrder: ['fighter', 'scout', 'drone', 'repair', 'hauler', 'barge', 'harvester'],
         launchTimer: 0,
+        target: {},
       });
       log(s, `New ${HANGAR_TYPES[c.hangarType].name.toLowerCase()} installed.`, 'good');
       return null;
@@ -124,6 +131,8 @@ export function apply(s: GameState, c: Command): string | null {
             ? s.hangars.find((h) => h.id === c.scope)?.stance
             : (s.doctrine.byClass[c.scope] ??= {});
       if (!target) return 'No such scope';
+      if (c.patch?.engagement !== undefined && !engagementUnlocked(s))
+        return 'Engagement stances need fighters or tactical doctrine';
       if (c.patch === null) {
         // clear one key (back to inherited); never clear the fleet default
         if (c.scope !== 'fleet' && c.key) delete target[c.key];
@@ -182,6 +191,32 @@ export function apply(s: GameState, c: Command): string | null {
     }
     case 'buyResearch':
       return buyNode(s, c.id) ? null : 'Cannot research that yet';
+    case 'setAutomation': {
+      const a = s.automation;
+      const p = c.patch;
+      if (p.autoBuy !== undefined) {
+        if (p.autoBuy && !autoBuyUnlocked(s)) return 'Research fleet requisition first';
+        a.autoBuy = p.autoBuy;
+      }
+      if (p.autoRebuild !== undefined) {
+        if (p.autoRebuild && !autoRebuildUnlocked(s)) return 'Research replacement orders first';
+        a.autoRebuild = p.autoRebuild;
+      }
+      if (p.creditFloor !== undefined) {
+        if (!Number.isFinite(p.creditFloor)) return 'Invalid credit floor';
+        a.creditFloor = Math.max(0, Math.round(p.creditFloor));
+      }
+      return null;
+    }
+    case 'setHangarTarget': {
+      const h = s.hangars.find((x) => x.id === c.hangarId);
+      if (!h) return 'No such hangar';
+      if (!SHIP_STATS[c.cls]) return 'No such class';
+      const n = Math.max(0, Math.min(MAX_HANGAR_SLOTS, Math.floor(c.count) || 0));
+      if (n === 0) delete h.target[c.cls];
+      else h.target[c.cls] = n;
+      return null;
+    }
   }
 }
 
@@ -205,6 +240,7 @@ export function prestige(s: GameState): GameState {
     },
     doctrine: structuredClone(s.doctrine),
     rules: structuredClone(s.rules),
+    automation: structuredClone(s.automation),
   });
   log(next, `Operation reset. +${rp} research points.`, 'good');
   return next;

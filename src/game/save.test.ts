@@ -89,6 +89,14 @@ describe('migrate', () => {
     expect(result.state.powerMode).toBe('income');
     expect(result.state.wave.timer).toBe(Infinity);
     expect(result.state.storm.timer).toBe(Infinity);
+    expect(result.state.automation).toEqual({
+      autoBuy: false,
+      autoRebuild: false,
+      creditFloor: 0,
+      rebuildQueue: [],
+      timer: 0,
+    });
+    for (const h of result.state.hangars) expect(h.target).toEqual({});
     // The fixture module itself stays a v1 document.
     expect(saveV1.version).toBe(1);
     expect(saveV1.wave.timer).toBeNull();

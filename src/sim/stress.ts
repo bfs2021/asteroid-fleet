@@ -66,6 +66,7 @@ export function stressGame(ships = 1000, asteroids = 600, pirates = 40, seed = 9
           stance: {},
           launchOrder: [...SHIP_CLASSES],
           launchTimer: 0,
+          target: {},
         });
         start = 0;
       }

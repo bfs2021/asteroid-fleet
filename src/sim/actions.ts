@@ -238,6 +238,7 @@ export function apply(s: GameState, c: Command): string | null {
       if (p.autoRebuild !== undefined) {
         if (p.autoRebuild && !autoRebuildUnlocked(s)) return 'Research replacement orders first';
         a.autoRebuild = p.autoRebuild;
+        if (!p.autoRebuild) a.rebuildQueue.length = 0;
       }
       if (p.creditFloor !== undefined) {
         if (!Number.isFinite(p.creditFloor)) return 'Invalid credit floor';

@@ -13,6 +13,7 @@ import { onSphere, seeded, v3 } from './math';
 import { lvl } from './research';
 import type {
   Asteroid,
+  FieldRecord,
   GameState,
   Hangar,
   Hazard,
@@ -24,7 +25,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 const NAMES = [
   'Kestrel',
@@ -125,7 +126,38 @@ export function clusterCenters(sys: StarSystem): Vec3[] {
   return out;
 }
 
+/** Seconds for a partly mined rock to refill completely while the carrier is away. */
+export const FIELD_REFILL_SECS = 300;
+
+/** Snapshot the current field's depletion so a later visit can restore it. */
+export function recordField(s: GameState): FieldRecord {
+  const rocks: [number, number, number][] = [];
+  for (let i = 0; i < s.asteroids.length; i++) {
+    const a = s.asteroids[i];
+    const frac = Math.round((a.ore / a.maxOre) * 1000) / 1000;
+    if (frac >= 1) continue;
+    rocks.push([i, frac, frac > 0 ? 0 : Math.round(a.respawn * 10) / 10]);
+  }
+  return { left: s.time, rocks };
+}
+
+/** Apply a depletion record to a freshly seeded field, refilling for the time away. */
+export function applyField(s: GameState, rec: FieldRecord) {
+  const away = Math.max(0, s.time - rec.left);
+  for (const [i, frac, respawn] of rec.rocks) {
+    const a = s.asteroids[i];
+    if (!a) continue;
+    if (frac > 0) {
+      a.ore = a.maxOre * Math.min(1, frac + away / FIELD_REFILL_SECS);
+    } else if (respawn > away) {
+      a.ore = 0;
+      a.respawn = respawn - away;
+    }
+  }
+}
+
 export function enterSystem(s: GameState, id: number) {
+  if (s.asteroids.length > 0 && s.systemId !== id) s.fields[s.systemId] = recordField(s);
   const sys = s.systems[id];
   s.systemId = id;
   s.pirates = [];
@@ -137,6 +169,11 @@ export function enterSystem(s: GameState, id: number) {
   for (const c of clusterCenters(sys)) {
     const n = 8 + Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s.asteroids.push(spawnAsteroid(s, r, c, sys));
+  }
+  const rec = s.fields[id];
+  if (rec) {
+    applyField(s, rec);
+    delete s.fields[id];
   }
   s.hazards = [];
   const hz = sys.tier === 1 ? 0 : sys.tier === 2 ? 2 : 3;
@@ -289,6 +326,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     hazards: [],
     systems: makeSystems(seed),
     systemId: 0,
+    fields: {},
     doctrine: carry?.doctrine ?? {
       fleet: { ...DEFAULT_STANCE },
       byClass: { drone: { mining: 'safe' } },

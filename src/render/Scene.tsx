@@ -1,10 +1,18 @@
 import { OrbitControls, Stars } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Suspense,
+  lazy,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { engine, lerpPos, useGame } from '../game/engine';
+import { engine, lerpPos } from '../game/engine';
 import { COVER_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
 import { SHIP_CLASSES, type ShipClass, type Vec3 } from '../sim/types';
@@ -17,11 +25,26 @@ import {
   shipGeometry,
 } from './geometry';
 
-const MAX_PER_CLASS = 400;
+const Effects = lazy(() => import('./Effects'));
+
+// Sized for the 1000-ship sim cap; the buffers are allocated once per layer.
+const MAX_PER_CLASS = 1000;
+const MAX_ASTEROIDS = 1000;
 const dummy = new THREE.Object3D();
 const tmp: Vec3 = { x: 0, y: 0, z: 0 };
 const tmpV = new THREE.Vector3();
 const headings = new Map<number, THREE.Vector3>();
+
+/** Drop headings of destroyed ships; `engine.prev` only holds live ids. */
+function pruneHeadings() {
+  if (headings.size <= engine.prev.size + 64) return;
+  for (const id of headings.keys()) if (!engine.prev.has(id)) headings.delete(id);
+}
+
+/** Re-renders only when the system changes, not on every 5 Hz UI tick. */
+function useSystemId(): number {
+  return useSyncExternalStore(engine.subscribe, () => engine.state.systemId);
+}
 
 function heading(id: number, cur: Vec3): THREE.Vector3 {
   const prev = engine.prev.get(id);
@@ -61,6 +84,7 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
     if (!m || !g) return;
     const s = engine.state;
     const a = engine.alpha();
+    if (cls === 'pirate') pruneHeadings();
     let n = 0;
     const list = cls === 'pirate' ? s.pirates : s.ships;
     for (const e of list) {
@@ -127,6 +151,7 @@ function Asteroids() {
     let n = 0;
     for (const a of engine.state.asteroids) {
       if (a.ore <= 0) continue;
+      if (n >= MAX_ASTEROIDS) break;
       const k = 0.45 + 0.55 * (a.ore / a.maxOre);
       dummy.position.set(a.pos.x, a.pos.y, a.pos.z);
       dummy.rotation.set(a.id * 0.7 + t * 0.05 * ((a.id % 3) - 1), a.id * 1.3 + t * 0.03, 0);
@@ -142,7 +167,7 @@ function Asteroids() {
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   });
   return (
-    <instancedMesh ref={mesh} args={[geo, undefined, 600]} frustumCulled={false}>
+    <instancedMesh ref={mesh} args={[geo, undefined, MAX_ASTEROIDS]} frustumCulled={false}>
       <meshStandardMaterial roughness={0.95} metalness={0.05} flatShading />
     </instancedMesh>
   );
@@ -155,6 +180,9 @@ const BEAM_COLORS: Record<string, THREE.Color> = {
   pirateLaser: new THREE.Color('#ff3020').multiplyScalar(3),
   repair: new THREE.Color('#5affb4').multiplyScalar(2.5),
 };
+
+const rocks = new Map<number, Vec3>();
+const beamFrom: Vec3 = { x: 0, y: 0, z: 0 };
 
 function Beams() {
   const geo = useMemo(() => {
@@ -177,12 +205,13 @@ function Beams() {
       col.setXYZ(n * 2 + 1, c.r * 0.3, c.g * 0.3, c.b * 0.3);
       n++;
     };
-    const rocks = new Map(s.asteroids.map((r) => [r.id, r]));
+    rocks.clear();
+    for (const r of s.asteroids) rocks.set(r.id, r.pos);
     for (const sh of s.ships) {
       if (sh.mode !== 'mining') continue;
       const r = rocks.get(sh.targetId);
       if (!r) continue;
-      push({ ...lerpPos(sh.id, sh.pos, a, tmp) }, r.pos, BEAM_COLORS.mine);
+      push(lerpPos(sh.id, sh.pos, a, beamFrom), r, BEAM_COLORS.mine);
     }
     for (const f of s.fx) {
       const c = BEAM_COLORS[f.kind];
@@ -322,12 +351,12 @@ function Carrier() {
   );
 }
 
-function Hazards() {
-  const s = useGame();
+const Hazards = memo(function Hazards() {
+  const systemId = useSystemId();
   return (
     <>
-      {s.hazards.map((h, i) => (
-        <group key={`${s.systemId}-${i}`} position={[h.pos.x, h.pos.y, h.pos.z]}>
+      {engine.state.hazards.map((h, i) => (
+        <group key={`${systemId}-${i}`} position={[h.pos.x, h.pos.y, h.pos.z]}>
           <mesh>
             <sphereGeometry args={[h.radius, 24, 16]} />
             <meshBasicMaterial
@@ -350,11 +379,10 @@ function Hazards() {
       ))}
     </>
   );
-}
+});
 
-function GasGiant() {
-  const s = useGame();
-  const sys = s.systems[s.systemId];
+const GasGiant = memo(function GasGiant() {
+  const sys = engine.state.systems[useSystemId()];
   const mat = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -386,7 +414,7 @@ function GasGiant() {
       </mesh>
     </group>
   );
-}
+});
 
 const TIER_SKY: Record<number, [string, string]> = {
   1: ['#2a6cff', '#7fd4ff'],
@@ -394,9 +422,9 @@ const TIER_SKY: Record<number, [string, string]> = {
   3: ['#ff3d2e', '#ffb35a'],
 };
 
-function Sky() {
-  const s = useGame();
-  const tier = s.systems[s.systemId].tier;
+const Sky = memo(function Sky() {
+  const sys = engine.state.systems[useSystemId()];
+  const tier = sys.tier;
   const mat = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -412,7 +440,7 @@ function Sky() {
     mat.uniforms.uA.value.set(TIER_SKY[tier][0]);
     mat.uniforms.uB.value.set(TIER_SKY[tier][1]);
   }, [tier, mat]);
-  const bright = s.systems[s.systemId].brightness;
+  const bright = sys.brightness;
   return (
     <>
       <mesh material={mat}>
@@ -432,7 +460,7 @@ function Sky() {
       <hemisphereLight args={['#6f8cff', '#1a0f20', 0.35]} />
     </>
   );
-}
+});
 
 const ICON_COLORS: Record<string, THREE.Color> = {
   ...Object.fromEntries(
@@ -547,7 +575,13 @@ function CameraRig({
   );
 }
 
-export function Scene({ tactical, quality, bloom, onAutoTactical }: ViewOptions) {
+// Memoised so the parent's 5 Hz UI re-render doesn't re-render the whole scene graph.
+export const Scene = memo(function Scene({
+  tactical,
+  quality,
+  bloom,
+  onAutoTactical,
+}: ViewOptions) {
   const [auto, setAuto] = useState(false);
   const onAuto = (on: boolean) => {
     setAuto(on);
@@ -574,16 +608,10 @@ export function Scene({ tactical, quality, bloom, onAutoTactical }: ViewOptions)
       <Tactical on={tactical || auto} />
       <CameraRig tactical={tactical} onAutoTactical={onAuto} />
       {quality === 'high' && (
-        <EffectComposer multisampling={0}>
-          <Bloom
-            mipmapBlur
-            intensity={bloom ? 1.1 : 0}
-            luminanceThreshold={1}
-            luminanceSmoothing={0.2}
-          />
-          <Vignette eskil={false} offset={0.2} darkness={0.7} />
-        </EffectComposer>
+        <Suspense fallback={null}>
+          <Effects bloom={bloom} />
+        </Suspense>
       )}
     </Canvas>
   );
-}
+});

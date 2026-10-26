@@ -9,6 +9,8 @@ export type Settings = {
   uiScale: number;
   quality: 'high' | 'low';
   bloom: boolean;
+  /** Frame-rate cap in low quality; 0 is uncapped. */
+  fpsCap: number;
   masterVolume: number;
   musicVolume: number;
   sfxVolume: number;
@@ -18,12 +20,14 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 1,
   quality: 'high',
   bloom: true,
+  fpsCap: 30,
   masterVolume: 0.8,
   musicVolume: 0.6,
   sfxVolume: 0.8,
 };
 
 export const UI_SCALES = [0.85, 1, 1.15, 1.3];
+export const FPS_CAPS = [0, 30, 60];
 
 function clamp01(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
@@ -38,6 +42,7 @@ export function parseSettings(raw: unknown): Settings {
     uiScale: typeof r.uiScale === 'number' && UI_SCALES.includes(r.uiScale) ? r.uiScale : d.uiScale,
     quality: r.quality === 'low' || r.quality === 'high' ? r.quality : d.quality,
     bloom: typeof r.bloom === 'boolean' ? r.bloom : d.bloom,
+    fpsCap: typeof r.fpsCap === 'number' && FPS_CAPS.includes(r.fpsCap) ? r.fpsCap : d.fpsCap,
     masterVolume: clamp01(r.masterVolume, d.masterVolume),
     musicVolume: clamp01(r.musicVolume, d.musicVolume),
     sfxVolume: clamp01(r.sfxVolume, d.sfxVolume),

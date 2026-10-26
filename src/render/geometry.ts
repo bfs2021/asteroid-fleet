@@ -43,8 +43,8 @@ export function shipGeometry(cls: ShipClass | 'pirate'): THREE.BufferGeometry {
   return g;
 }
 
-export function asteroidGeometry(): THREE.BufferGeometry {
-  const g = new THREE.IcosahedronGeometry(1, 1);
+export function asteroidGeometry(detail = 1): THREE.BufferGeometry {
+  const g = new THREE.IcosahedronGeometry(1, detail);
   const pos = g.getAttribute('position') as THREE.BufferAttribute;
   const r = seeded(99);
   const seen = new Map<string, number>();

@@ -6,6 +6,7 @@ import {
   TOAST_MS,
   TOAST_POLICY,
   VISIBLE_CAP,
+  WAITING_CAP,
   ToastQueue,
   offerToasts,
   wantsToast,
@@ -113,9 +114,9 @@ describe('toast queue', () => {
     expect(q.shown(now.t).map((t) => t.text)).toEqual(['E', 'D', 'C']);
     expect(q.shown(now.t)).toHaveLength(VISIBLE_CAP);
     expect(q.waiting).toBe(2);
-    // C was shown at t=2, so it expires at t=3002 and the newest waiter returns underneath.
-    expect(q.shown(2 + TOAST_MS.info).map((t) => t.text)).toEqual(['E', 'D', 'B']);
-    expect(q.waiting).toBe(1);
+    // A and B arrived at t=0 and t=1, so both have already expired by t=3002. C expires then too.
+    expect(q.shown(2 + TOAST_MS.info).map((t) => t.text)).toEqual(['E', 'D']);
+    expect(q.waiting).toBe(0);
   });
 
   it('updates a merged event in place, restarts its timer, and does not stack a duplicate', () => {
@@ -170,6 +171,75 @@ describe('toast queue', () => {
     expect(q.shown(now.t).map((t) => t.text)).toEqual(['D', 'C', 'B']);
     expect(q.goTo(q.shown(now.t)[0].key)).toBe(4);
     expect(q.shown(now.t).map((t) => t.text)).toEqual(['C', 'B', 'A']);
+  });
+
+  it('caps the waiting queue and drops the oldest non-critical waiters first', () => {
+    const q = new ToastQueue(() => 0);
+    for (let i = 0; i < VISIBLE_CAP + WAITING_CAP + 2; i++) {
+      q.push({ text: String(i), severity: 'info', carrierId: null });
+    }
+    expect(q.waiting).toBe(WAITING_CAP);
+    for (let n = 0; n < VISIBLE_CAP; n++) q.dismiss(q.shown(0)[0].key);
+    expect(q.shown(0).map((t) => t.text)).toEqual(['11', '10', '9']);
+    expect(q.shown(0).some((t) => t.text === '0' || t.text === '1')).toBe(false);
+  });
+
+  it('keeps a critical waiter when the overflow is non-critical', () => {
+    const q = new ToastQueue(() => 0);
+    for (let i = 0; i < VISIBLE_CAP; i++) {
+      q.push({ text: `c${i}`, severity: 'critical', carrierId: null });
+    }
+    q.push({ text: 'hold', severity: 'critical', carrierId: null });
+    for (let i = 0; i < WAITING_CAP + 2; i++) {
+      q.push({ text: `i${i}`, severity: 'info', carrierId: null });
+    }
+    expect(q.waiting).toBe(WAITING_CAP);
+    const seen: string[] = [];
+    for (let n = 0; n < 40 && q.shown(0).length > 0; n++) {
+      const top = q.shown(0)[0];
+      seen.push(top.text);
+      q.dismiss(top.key);
+    }
+    expect(seen).toContain('hold');
+    expect(seen).not.toContain('i0');
+    expect(seen).not.toContain('i1');
+  });
+
+  it('still caps the queue when every waiter is critical', () => {
+    const q = new ToastQueue(() => 0);
+    for (let i = 0; i < VISIBLE_CAP + WAITING_CAP + 1; i++) {
+      q.push({ text: String(i), severity: 'critical', carrierId: null });
+    }
+    expect(q.waiting).toBe(WAITING_CAP);
+  });
+
+  it('drops a waiter whose display time passed while it waited', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    for (let i = 0; i < VISIBLE_CAP; i++) {
+      q.push({ text: `c${i}`, severity: 'critical', carrierId: null });
+    }
+    q.push({ text: 'late', severity: 'info', carrierId: null });
+    expect(q.waiting).toBe(1);
+    now.t = TOAST_MS.info;
+    q.dismiss(q.shown(now.t).find((t) => t.text === 'c0')?.key ?? null);
+    expect(q.shown(now.t).map((t) => t.text)).toEqual(['c2', 'c1']);
+    expect(q.waiting).toBe(0);
+  });
+
+  it('expires a promoted toast from its arrival, not from when it took a slot', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    q.push({ text: 'A', severity: 'info', carrierId: null });
+    now.t = 1_000;
+    q.push({ text: 'B', severity: 'info', carrierId: null });
+    now.t = 2_000;
+    q.push({ text: 'C', severity: 'info', carrierId: null });
+    now.t = 2_500;
+    q.dismiss(q.push({ text: 'D', severity: 'info', carrierId: null }));
+    expect(q.shown(now.t).map((t) => t.text)).toEqual(['C', 'B', 'A']);
+    expect(q.shown(2_999).some((t) => t.text === 'A')).toBe(true);
+    expect(q.shown(3_000).some((t) => t.text === 'A')).toBe(false);
   });
 
   it('does not let a lesser toast cover a critical one', () => {

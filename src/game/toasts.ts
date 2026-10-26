@@ -3,6 +3,9 @@ import type { Severity, SimEvent, SimEventKind } from '../sim/types';
 /** How many toasts are on screen at once. Newer arrivals wait behind these. */
 export const VISIBLE_CAP = 3;
 
+/** How many toasts may wait for a slot. Past this, the oldest non-critical waiter is dropped. */
+export const WAITING_CAP = 10;
+
 /** Dismissed bus ids remembered so a merge in the same window does not reopen the toast. */
 export const DISMISSED_CAP = 32;
 
@@ -72,7 +75,7 @@ export interface Toast {
   severity: Severity;
   /** Set for carrier-scoped events. Engine errors leave it null, so they have no Go to. */
   carrierId: number | null;
-  /** Wall-clock ms when it became visible, or when a merge restarted the timer. */
+  /** Wall-clock ms when it arrived, or when a merge restarted the timer while it was visible. */
   shownAt: number;
 }
 
@@ -158,6 +161,7 @@ export class ToastQueue {
       const oldest = this.visible.splice(idx, 1)[0];
       if (oldest) this.pending.unshift(oldest);
     }
+    this.prunePending(now);
     this.schedule(now);
     return toast.key;
   }
@@ -229,11 +233,27 @@ export class ToastQueue {
 
   /** The newest waiter comes back under the toasts that are already showing. */
   private fill(now: number) {
+    this.prunePending(now);
     while (this.visible.length < VISIBLE_CAP && this.pending.length > 0) {
       const next = this.pending.shift();
       if (!next) break;
-      next.shownAt = now;
+      if (expired(next, now)) continue;
       this.visible.push(next);
+    }
+  }
+
+  /** Drop stale waiters, then the oldest non-critical ones, until the queue fits. */
+  private prunePending(now: number) {
+    this.pending = this.pending.filter((t) => !expired(t, now));
+    while (this.pending.length > WAITING_CAP) {
+      let drop = this.pending.length - 1;
+      for (let i = this.pending.length - 1; i >= 0; i--) {
+        if (this.pending[i].severity !== 'critical') {
+          drop = i;
+          break;
+        }
+      }
+      this.pending.splice(drop, 1);
     }
   }
 

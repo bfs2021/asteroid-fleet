@@ -58,6 +58,30 @@ describe('inbox merge', () => {
     ]);
   });
 
+  it('keeps Legacy keys stable when the oldest log line rolls off', () => {
+    const full: SimEvent[] = [];
+    for (let i = 0; i < 41; i++) {
+      full.unshift(ev('Legacy', i, { text: `line ${i}` }, { severity: 'info' }));
+    }
+    const before = mergeForInbox(full);
+    const after = mergeForInbox(full.slice(0, 40));
+    const keys = new Map(before.map((row) => [formatEvent(row), inboxKey(row)]));
+    expect(after).toHaveLength(40);
+    for (const row of after) expect(inboxKey(row)).toBe(keys.get(formatEvent(row)));
+  });
+
+  it('keeps typed-event keys stable when the oldest log line rolls off', () => {
+    const full: SimEvent[] = [];
+    for (let i = 0; i < 41; i++) {
+      full.unshift(ev('VeinFound', i * (MERGE_WINDOW_S + 1), { veins: 1 }));
+    }
+    const before = mergeForInbox(full);
+    const after = mergeForInbox(full.slice(0, 40));
+    const keys = new Map(before.map((row) => [row.t, inboxKey(row)]));
+    expect(after).toHaveLength(40);
+    for (const row of after) expect(inboxKey(row)).toBe(keys.get(row.t));
+  });
+
   it('gives two Legacy lines at t=0 distinct keys', () => {
     const log = [
       ev('Legacy', 0, { text: 'Docked.' }, { severity: 'info' }),

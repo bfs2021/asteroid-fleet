@@ -36,6 +36,23 @@
       // An opt-in balance script that logs numbers instead of asserting.
       "files": ["src/sim/balance.test.ts"],
       "rules": { "vitest/expect-expect": "off" }
+    },
+    {
+      // The sim protocol stays in game. The UI formats events when it renders them.
+      "files": ["src/game/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../ui", "../ui/*", "../ui/**", "../../ui", "../../ui/*", "../../ui/**"],
+                "message": "src/game must not import from src/ui."
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": ["dist", "node_modules"]

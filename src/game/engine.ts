@@ -2,7 +2,6 @@ import { useSyncExternalStore } from 'react';
 import type { OfflineReport, Order } from '../sim/actions';
 import { focused, focusOp, newGame } from '../sim/state';
 import type { GameState, Pirate, Ship, Sim, Vec3 } from '../sim/types';
-import { formatEvent } from '../ui/events';
 import type { BusEvent } from './events';
 import { createSimHost, type SimHost } from './host';
 import { MODES, type Frame, type OutMsg } from './protocol';
@@ -31,11 +30,18 @@ class Engine {
   /**
    * Toast queue (newest on top, a few visible). Expiry is time-based; the queue keeps
    * a single timer and clears it when the next deadline changes.
+   * The clock is the wall clock, not sim time, so toasts expire while the game is paused.
    */
   readonly toasts = new ToastQueue(
     () => Date.now(),
     () => this.emit(),
   );
+  /**
+   * Run generation. `replace` (reset or import) bumps it. Event batches from the
+   * worker carry the epoch they were sent in; an older one is ignored, so a message
+   * already in flight cannot toast the previous run.
+   */
+  epoch = 0;
   /**
    * Carrier the player asked to look at (toast Go to). The mirror still follows
    * `focusOp` until carrier switching (#77) posts this id to the worker.
@@ -76,10 +82,10 @@ class Engine {
       this.saveNotice = saved.notice;
       this.saveBackupFailed = !saved.backedUp;
     }
-    this.host = createSimHost((msg) => this.receive(msg), preferWorker);
+    this.host = createSimHost((msg) => this.onSimMessage(msg), preferWorker);
     started?.();
     const first = new Promise<void>((r) => (this.ready = r));
-    this.host.post({ t: 'init', state, now: Date.now(), settle });
+    this.host.post({ t: 'init', state, now: Date.now(), settle, epoch: this.epoch });
     await first;
     this.loaded = true;
     setInterval(() => void this.save(), AUTOSAVE_MS);
@@ -100,6 +106,21 @@ class Engine {
     return this.host?.kind ?? null;
   }
 
+  /** Sim-host callback. Event batches from an older run epoch are ignored. */
+  onSimMessage(msg: OutMsg) {
+    this.receive(msg);
+  }
+
+  /**
+   * Where the critical-overflow toast sends the player, or null for any other key.
+   * The Log tab should show every carrier, filtered to critical.
+   */
+  openToastInbox(key: string | null): { carrier: 'all'; severity: 'critical' } | null {
+    const action = this.toasts.inboxAction(key);
+    if (action?.type !== 'open-inbox') return null;
+    return { carrier: 'all', severity: action.severity };
+  }
+
   private receive(msg: OutMsg) {
     switch (msg.t) {
       case 'state':
@@ -115,9 +136,10 @@ class Engine {
         this.applyFrame(msg);
         return;
       case 'events': {
+        if (msg.epoch !== this.epoch) return;
         const ids = new Set(msg.events.map((e) => e.id));
         this.events = [...msg.events, ...this.events.filter((e) => !ids.has(e.id))].slice(0, 50);
-        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId, formatEvent)) this.emit();
+        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId)) this.emit();
         return;
       }
       case 'error':
@@ -254,14 +276,16 @@ class Engine {
   }
 
   replace(state: GameState) {
+    this.epoch += 1;
     this.toasts.clear();
+    this.events = [];
     this.saveNotice = null;
     this.saveBackupFailed = false;
     allowSaveOverwrite();
     this.state = state;
     this.adopt(state);
     this.snapshot();
-    this.host?.post({ t: 'replace', state });
+    this.host?.post({ t: 'replace', state, epoch: this.epoch });
     void this.write(state);
     this.emit();
   }

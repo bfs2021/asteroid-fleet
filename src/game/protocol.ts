@@ -24,12 +24,12 @@ const MODE_INDEX = new Map(MODES.map((m, i) => [m, i]));
 
 /** Messages from the main thread to the sim. */
 export type InMsg =
-  | { t: 'init'; state: GameState; now: number; settle: boolean }
+  | { t: 'init'; state: GameState; now: number; settle: boolean; epoch?: number }
   | { t: 'cmd'; cmd: Command }
   | { t: 'speed'; v: number }
   | { t: 'pause'; v: boolean }
   | { t: 'prestige' }
-  | { t: 'replace'; state: GameState }
+  | { t: 'replace'; state: GameState; epoch: number }
   | { t: 'snapshot'; id: number };
 
 /**
@@ -53,8 +53,13 @@ export type OutMsg =
   | Frame
   /** A few times per second; see `UiSnapshot`. */
   | { t: 'state'; snap: UiSnapshot; offline: OfflineReport | null }
-  /** New or grown events since the last batch, most severe first. */
-  | { t: 'events'; events: BusEvent[] }
+  /**
+   * New or grown events since the last batch, most severe first.
+   * `epoch` is the run generation the worker stamped. The engine ignores a batch
+   * whose epoch is not the current one, so a message sent before `replace` was
+   * handled cannot toast the previous run.
+   */
+  | { t: 'events'; epoch: number; events: BusEvent[] }
   | { t: 'error'; text: string }
   | { t: 'snapshot'; id: number; state: GameState };
 

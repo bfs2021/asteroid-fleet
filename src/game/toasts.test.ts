@@ -3,6 +3,7 @@ import { SEVERITY } from '../sim/state';
 import type { EventData, Severity, SimEvent, SimEventKind } from '../sim/types';
 import {
   DISMISSED_CAP,
+  MIN_ON_SCREEN_MS,
   TOAST_MS,
   TOAST_POLICY,
   VISIBLE_CAP,
@@ -38,10 +39,6 @@ function lost(cls: EventData['ShipLost']['cls'], count: number) {
 
 function bus(event: SimEvent, id: number): SimEvent & { id: number } {
   return { ...event, id };
-}
-
-function shipText(e: SimEvent) {
-  return e.kind === 'ShipLost' ? `${e.data.cls} x${e.count}` : e.kind;
 }
 
 describe('toast policy', () => {
@@ -227,19 +224,87 @@ describe('toast queue', () => {
     expect(q.waiting).toBe(0);
   });
 
-  it('expires a promoted toast from its arrival, not from when it took a slot', () => {
+  it('keeps a promoted toast on screen for the minimum time', () => {
     const now = { t: 0 };
     const q = queueAt(now);
-    q.push({ text: 'A', severity: 'info', carrierId: null });
+    for (let i = 0; i < VISIBLE_CAP; i++) {
+      q.push({ text: `c${i}`, severity: 'critical', carrierId: null });
+    }
+    // A warn that waited 5.5s of its 6s display window used to flash for ~0.5s.
+    q.push({ text: 'late warn', severity: 'warn', carrierId: null });
+    now.t = 5_500;
+    q.dismiss(q.shown(now.t)[0].key);
+    expect(MIN_ON_SCREEN_MS).toBe(1_500);
+    expect(q.shown(now.t).some((t) => t.text === 'late warn')).toBe(true);
+    expect(q.shown(now.t + 1_500 - 1).some((t) => t.text === 'late warn')).toBe(true);
+    expect(q.shown(now.t + 1_500).some((t) => t.text === 'late warn')).toBe(false);
+  });
+
+  it('still shows a promoted toast for the display time it has left when that is longer', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    for (let i = 0; i < VISIBLE_CAP; i++) {
+      q.push({ text: `c${i}`, severity: 'critical', carrierId: null });
+    }
+    q.push({ text: 'soon', severity: 'warn', carrierId: null });
     now.t = 1_000;
-    q.push({ text: 'B', severity: 'info', carrierId: null });
-    now.t = 2_000;
-    q.push({ text: 'C', severity: 'info', carrierId: null });
-    now.t = 2_500;
-    q.dismiss(q.push({ text: 'D', severity: 'info', carrierId: null }));
-    expect(q.shown(now.t).map((t) => t.text)).toEqual(['C', 'B', 'A']);
-    expect(q.shown(2_999).some((t) => t.text === 'A')).toBe(true);
-    expect(q.shown(3_000).some((t) => t.text === 'A')).toBe(false);
+    q.dismiss(q.shown(now.t)[0].key);
+    expect(q.shown(now.t + 1_500).some((t) => t.text === 'soon')).toBe(true);
+    expect(q.shown(TOAST_MS.warn - 1).some((t) => t.text === 'soon')).toBe(true);
+    expect(q.shown(TOAST_MS.warn).some((t) => t.text === 'soon')).toBe(false);
+  });
+
+  it('refreshes a waiting toast when a later event merges into it', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    for (let i = 0; i < VISIBLE_CAP; i++) {
+      q.push({ text: `c${i}`, severity: 'critical', carrierId: null });
+    }
+    q.push({ eventId: 9, text: 'one', severity: 'warn', carrierId: 1 });
+    now.t = TOAST_MS.warn - 10;
+    q.push({ eventId: 9, text: 'three', severity: 'warn', carrierId: 1 });
+    now.t = TOAST_MS.warn + 10;
+    q.dismiss(q.shown(now.t)[0].key);
+    expect(q.shown(now.t).some((t) => t.text === 'three')).toBe(true);
+  });
+
+  it('collapses critical overflow into one sticky summary instead of dropping it', () => {
+    const q = new ToastQueue(() => 0);
+    for (let i = 0; i < VISIBLE_CAP + WAITING_CAP + 1; i++) {
+      q.push({ text: String(i), severity: 'critical', carrierId: null });
+    }
+    const summary = q.shown(0).find((t) => t.action?.type === 'open-inbox');
+    expect(summary?.text).toBe('1 more critical event, open inbox');
+    expect(summary?.severity).toBe('critical');
+    expect(summary?.action).toEqual({ type: 'open-inbox', severity: 'critical' });
+    expect(q.waiting).toBe(WAITING_CAP);
+    expect(q.shown(0).filter((t) => t.action?.type !== 'open-inbox')).toHaveLength(VISIBLE_CAP);
+    const seen: string[] = [];
+    for (let n = 0; n < 40; n++) {
+      const top = q.shown(0).find((t) => t.action?.type !== 'open-inbox');
+      if (!top) break;
+      seen.push(top.text);
+      q.dismiss(top.key);
+    }
+    expect(seen).not.toContain('0');
+    expect(seen).toContain('1');
+    expect(seen).toContain('13');
+    expect(q.shown(1e12).map((t) => t.key)).toEqual([summary?.key]);
+    q.dismiss(summary?.key ?? null);
+    expect(q.shown(1e12)).toEqual([]);
+  });
+
+  it('updates the critical overflow count on the same sticky summary', () => {
+    const q = new ToastQueue(() => 0);
+    for (let i = 0; i < VISIBLE_CAP + WAITING_CAP + 1; i++) {
+      q.push({ text: String(i), severity: 'critical', carrierId: null });
+    }
+    const summary = q.shown(0).find((t) => t.action?.type === 'open-inbox');
+    q.push({ text: 'newer', severity: 'critical', carrierId: null });
+    const updated = q.shown(1e12).find((t) => t.action?.type === 'open-inbox');
+    expect(updated?.key).toBe(summary?.key);
+    expect(updated?.text).toBe('2 more critical events, open inbox');
+    expect(updated?.action).toEqual({ type: 'open-inbox', severity: 'critical' });
   });
 
   it('does not let a lesser toast cover a critical one', () => {
@@ -270,13 +335,17 @@ describe('toast queue', () => {
     const now = { t: 0 };
     const q = queueAt(now);
     const barge = ev('ShipLost', { cls: 'barge', cause: 'destroyed' });
-    offerToasts(q, [bus(barge, 7)], 0, shipText);
+    offerToasts(q, [bus(barge, 7)], 0);
     expect(wantsToast(barge, 0)).toBe(true);
     now.t = 5_000;
     const follow = ev('ShipLost', { cls: 'drone', cause: 'destroyed' }, { count: 2, t: 1 });
     expect(wantsToast(follow, 0)).toBe(false);
-    offerToasts(q, [bus(follow, 7)], 0, shipText);
-    expect(q.shown(now.t).map((t) => t.text)).toEqual(['drone x2']);
+    offerToasts(q, [bus(follow, 7)], 0);
+    expect(q.shown(now.t)[0].event).toMatchObject({
+      kind: 'ShipLost',
+      count: 2,
+      data: { cls: 'drone' },
+    });
     expect(q.shown(now.t + TOAST_MS.warn - 1)).toHaveLength(1);
     expect(q.shown(now.t + TOAST_MS.warn)).toEqual([]);
   });
@@ -284,21 +353,21 @@ describe('toast queue', () => {
   it('does not bring a dismissed toast back unless the severity rises', () => {
     const now = { t: 0 };
     const q = queueAt(now);
-    offerToasts(q, [bus(ev('ShipLost', { cls: 'barge', cause: 'destroyed' }), 4)], 0, shipText);
+    offerToasts(q, [bus(ev('ShipLost', { cls: 'barge', cause: 'destroyed' }), 4)], 0);
     q.dismiss(q.shown(now.t)[0].key);
     now.t = 1_000;
     const again = ev('ShipLost', { cls: 'barge', cause: 'destroyed' }, { count: 2, t: 1 });
     expect(wantsToast(again, 0)).toBe(true);
-    offerToasts(q, [bus(again, 4)], 0, shipText);
+    offerToasts(q, [bus(again, 4)], 0);
     expect(q.shown(now.t)).toEqual([]);
     const critical = ev(
       'ShipLost',
       { cls: 'drone', cause: 'destroyed' },
       { count: 4, severity: 'critical', t: 2 },
     );
-    offerToasts(q, [bus(critical, 4)], 0, shipText);
+    offerToasts(q, [bus(critical, 4)], 0);
     expect(q.shown(now.t).map((t) => t.severity)).toEqual(['critical']);
-    expect(q.shown(now.t)[0].text).toBe('drone x4');
+    expect(q.shown(now.t)[0].event).toMatchObject({ count: 4, data: { cls: 'drone' } });
   });
 
   it('treats Go to as a dismissal of that event', () => {
@@ -338,9 +407,8 @@ describe('toast queue', () => {
         bus(ev('PiratesArrived', { size: 2 }, { t: 5 }), 2),
       ],
       0,
-      (e) => e.kind,
     );
-    expect(q.shown(0).map((t) => t.text)).toEqual(['PiratesArrived', 'WelcomeBack']);
+    expect(q.shown(0).map((t) => t.event?.kind)).toEqual(['PiratesArrived', 'WelcomeBack']);
     expect(q.shown(0).map((t) => t.systemId)).toEqual([0, 0]);
   });
 

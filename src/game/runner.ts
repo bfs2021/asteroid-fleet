@@ -31,6 +31,8 @@ export class SimRunner {
   private fieldsAt: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private events = new EventAggregator();
+  /** Run generation from the last init or replace. Stamped on every events batch. */
+  private epoch = 0;
 
   constructor(
     private post: Post,
@@ -40,6 +42,7 @@ export class SimRunner {
   handle(msg: InMsg) {
     switch (msg.t) {
       case 'init': {
+        this.epoch = msg.epoch ?? 0;
         this.adopt(msg.state);
         if (msg.settle)
           this.offline = settleOffline(msg.state, (msg.now - msg.state.savedAt) / 1000);
@@ -70,6 +73,7 @@ export class SimRunner {
         this.sendFrame();
         return;
       case 'replace':
+        this.epoch = msg.epoch;
         this.adopt(msg.state);
         this.acc = 0;
         this.sendState();
@@ -140,7 +144,7 @@ export class SimRunner {
     if (!s || s.events.length === 0) return;
     const events = this.events.push(s.events);
     s.events.length = 0;
-    this.post({ t: 'events', events });
+    this.post({ t: 'events', epoch: this.epoch, events });
   }
 
   private sendFrame() {

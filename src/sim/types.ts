@@ -132,6 +132,16 @@ export interface Hazard {
   kind: 'debris' | 'radiation';
 }
 
+/**
+ * Compact depletion record for a system the carrier left. Only rocks that differ
+ * from a freshly seeded field are listed, as `[index, oreFraction, respawn]`.
+ */
+export interface FieldRecord {
+  /** `GameState.time` when the carrier left. */
+  left: number;
+  rocks: [number, number, number][];
+}
+
 export interface StarSystem {
   id: number;
   name: string;
@@ -224,6 +234,8 @@ export interface GameState {
   hazards: Hazard[];
   systems: StarSystem[];
   systemId: number;
+  /** Depletion records of systems left behind, keyed by system id. */
+  fields: Record<number, FieldRecord>;
   doctrine: Doctrine;
   rules: Rule[];
   warp: Warp | null;

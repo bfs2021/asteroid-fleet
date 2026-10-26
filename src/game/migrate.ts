@@ -34,6 +34,8 @@ export const migrations: Record<number, Migration> = {
       for (const h of save.hangars) if (h && typeof h === 'object') h.target ??= {};
     return save;
   },
+  // v3: per-system depletion records (#14). Older saves have none.
+  2: (save) => ({ ...save, fields: {} }),
 };
 
 export function applyMigrationSteps(
@@ -94,6 +96,7 @@ function validateSave(save: SaveBlob): MigrateResult {
   if (!Array.isArray(save.asteroids)) return { ok: false, reason: 'corrupt' };
   if (!Array.isArray(save.hangars)) return { ok: false, reason: 'corrupt' };
   if (!Array.isArray(save.systems)) return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.fields)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.carrier)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.stats)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.doctrine)) return { ok: false, reason: 'corrupt' };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAVE_VERSION, newGame } from '../sim/state';
 import saveV1 from './fixtures/save-v1.json';
+import saveV2 from './fixtures/save-v2.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
   SAVE_BACKUP_FAILED_NOTICE,
@@ -100,6 +101,20 @@ describe('migrate', () => {
     // The fixture module itself stays a v1 document.
     expect(saveV1.version).toBe(1);
     expect(saveV1.wave.timer).toBeNull();
+  });
+
+  it('migrates v1 and v2 saves to v3 with empty depletion records', () => {
+    const fromV1 = migrate(saveV1);
+    expect(fromV1.ok && fromV1.state.fields).toEqual({});
+    expect(fromV1.ok && fromV1.state.automation.autoBuy).toBe(false);
+    expect(saveV2.version).toBe(2);
+    const fromV2 = migrate(saveV2);
+    expect(fromV2.ok).toBe(true);
+    if (!fromV2.ok) return;
+    expect(fromV2.state.version).toBe(SAVE_VERSION);
+    expect(fromV2.state.fields).toEqual({});
+    expect(fromV2.state.automation.autoRebuild).toBe(true);
+    expect(fromV2.state.automation.creditFloor).toBe(100);
   });
 
   it('applies one migration step per version, in order', () => {

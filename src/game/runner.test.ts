@@ -17,6 +17,16 @@ function local(state: GameState) {
   return { host, out };
 }
 
+function pay(speed: number) {
+  const s = newGame(2);
+  s.miningIncomeAvg = 10;
+  const { host } = local(s);
+  host.post({ t: 'speed', v: speed });
+  host.runner.resetClock(0);
+  host.runner.pump(120_000);
+  return host.runner.state?.credits ?? 0;
+}
+
 describe('sim runner', () => {
   it('matches stepping the sim directly, commands included', () => {
     const direct = newGame(7);
@@ -68,6 +78,10 @@ describe('sim runner', () => {
     host.runner.stop();
     const st = out.find((m) => m.t === 'state');
     expect(st?.t === 'state' && st.offline?.credits).toBeGreaterThan(0);
+  });
+
+  it('pays a background gap the same at any game speed (#38)', () => {
+    expect(pay(4)).toBe(pay(1));
   });
 });
 

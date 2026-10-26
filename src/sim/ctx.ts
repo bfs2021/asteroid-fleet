@@ -4,7 +4,18 @@ import { queueRebuild } from './automation';
 // saved; its containers are reused between ticks to keep the hot path free of
 // allocations.
 
-import { COVER_RADIUS, DOCK_RADIUS, HANGAR_TYPES, MINING_RATE, SHIP_STATS } from './config';
+import {
+  COMPRESSOR_CARGO,
+  COVER_RADIUS,
+  DOCK_RADIUS,
+  HANGAR_TYPES,
+  LASER_DAMAGE,
+  LASER_RATE,
+  MINING_RATE,
+  SHIELD_TAKEN,
+  SHIP_STATS,
+  TRACTOR_SPEED,
+} from './config';
 import { effectiveStance, rule } from './doctrine';
 import { carrierStorage } from './hangar';
 import { copy, dist, dist2, moveToward } from './math';
@@ -16,6 +27,7 @@ import {
   type Asteroid,
   type GameState,
   type Hangar,
+  type ModuleId,
   type Pirate,
   type Ship,
   type ShipClass,
@@ -48,6 +60,8 @@ export interface Ctx {
   hangarInfo: Map<Hangar, HangarInfo>;
   stances: Map<number, Stance>;
   asteroidGrid: PointGrid;
+  /** Asteroid ids scouts marked as rich veins. */
+  veins: Set<number>;
   /** Upper bound on asteroid value this tick (for pruning grid searches). */
   maxValue: number;
   recall: boolean;
@@ -83,6 +97,7 @@ const ctx: Ctx = {
   hangarInfo: new Map(),
   stances: new Map(),
   asteroidGrid: new PointGrid(16),
+  veins: new Set(),
   maxValue: 0,
   recall: false,
   income: 0,
@@ -126,6 +141,8 @@ export function buildCtx(s: GameState): Ctx {
   }
   ctx.maxValue = maxValue;
   ctx.asteroidGrid.build(s.asteroids);
+  ctx.veins.clear();
+  for (const id of s.recon.veins) ctx.veins.add(id);
   // First hangar listing a ship wins, matching `hangarOf` in hangar.ts.
   for (const h of s.hangars)
     for (const it of h.items) if (!ctx.hangarOf.has(it.shipId)) ctx.hangarOf.set(it.shipId, h);
@@ -192,8 +209,17 @@ export function stanceOf(s: GameState, c: Ctx, ship: Ship): Stance {
 
 // ---------- stat helpers ----------
 
-export function cargoCap(s: GameState, cls: ShipClass): number {
-  const base = SHIP_STATS[cls].cargo;
+/** Number of `id` modules fitted (modules stack). */
+export function modCount(ship: Ship, id: ModuleId): number {
+  let n = 0;
+  for (const m of ship.modules) if (m === id) n++;
+  return n;
+}
+
+/** Cargo capacity of a class, including `ship`'s compressors when given. */
+export function cargoCap(s: GameState, cls: ShipClass, ship?: Ship): number {
+  const base =
+    SHIP_STATS[cls].cargo * (ship ? COMPRESSOR_CARGO ** modCount(ship, 'compressor') : 1);
   if (cls === 'barge') return base * (1 + 0.2 * lvl(s, 'bargeCap'));
   if (cls === 'drone') return base * (1 + 0.2 * lvl(s, 'droneCargo'));
   if (cls === 'hauler') return base * (1 + 0.25 * lvl(s, 'haulerHold'));
@@ -209,7 +235,7 @@ export function speed(s: GameState, ship: Ship): number {
   else if (ship.cls === 'scout') v *= 1 + 0.25 * lvl(s, 'scoutSpeed');
   else if (ship.cls === 'repair') v *= 1 + 0.25 * lvl(s, 'repairSpeed');
   else if (ship.cls === 'harvester') v *= 1 + 0.2 * lvl(s, 'harvestSpeed');
-  return v;
+  return v * TRACTOR_SPEED ** modCount(ship, 'tractor');
 }
 
 export function fighterDamage(s: GameState, c: Ctx, ship: Ship): number {
@@ -218,7 +244,7 @@ export function fighterDamage(s: GameState, c: Ctx, ship: Ship): number {
     const h = c.hangarOf.get(ship.id);
     if (h && hangarInfo(c, h).allFighters) d *= 1.25;
   }
-  return d;
+  return d * LASER_DAMAGE ** modCount(ship, 'laser');
 }
 
 export function miningRate(s: GameState, c: Ctx, ship: Ship): number {
@@ -228,7 +254,7 @@ export function miningRate(s: GameState, c: Ctx, ship: Ship): number {
     const n = h ? hangarInfo(c, h).drones : 0;
     r *= 1 + Math.min(0.5, 0.1 * n);
   }
-  return r;
+  return r * LASER_RATE ** modCount(ship, 'laser');
 }
 
 export function inHazard(s: GameState, p: Vec3): boolean {
@@ -263,6 +289,7 @@ export function nearestPirate(s: GameState, p: Vec3, within: number): Pirate | n
 export function damageShip(s: GameState, ship: Ship, dmg: number) {
   if (ship.cls === 'hauler' && lvl(s, 'haulerArmor') > 0) dmg *= 0.6;
   if (ship.cls === 'barge') dmg *= 1 - 0.25 * lvl(s, 'bargeShell');
+  dmg *= SHIELD_TAKEN ** modCount(ship, 'shield');
   ship.hull -= dmg;
 }
 

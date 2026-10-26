@@ -28,6 +28,8 @@ export interface Doctrine {
   byClass: Partial<Record<ShipClass, Partial<Stance>>>;
 }
 
+export type ModuleId = 'laser' | 'drill' | 'tractor' | 'shield' | 'compressor';
+
 export type HangarType = 'launch' | 'drydock' | 'cargo' | 'fabricator';
 
 export interface HangarItem {
@@ -103,6 +105,8 @@ export interface Ship {
   /** Barge whose drone bay this drone is based at, -1 for the carrier. */
   bargeId: number;
   fireCooldown: number;
+  /** Fitted modules, at most `MODULE_SLOTS[cls]`. */
+  modules: ModuleId[];
 }
 
 export interface Pirate {
@@ -153,6 +157,16 @@ export interface FieldRecord {
   /** `GameState.time` when the carrier left. */
   left: number;
   rocks: [number, number, number][];
+}
+
+/** What scouts have revealed in the current system. Cleared on every jump. */
+export interface Recon {
+  /** Indices into `clusterCenters` that a scout has surveyed. */
+  clusters: number[];
+  /** Asteroid ids marked as rich veins. */
+  veins: number[];
+  /** Indices into `GameState.hazards` a scout has charted. */
+  hazards: number[];
 }
 
 export interface StarSystem {
@@ -247,6 +261,7 @@ export interface GameState {
   asteroids: Asteroid[];
   containers: Container[];
   hazards: Hazard[];
+  recon: Recon;
   systems: StarSystem[];
   systemId: number;
   /** Depletion records of systems left behind, keyed by system id. */

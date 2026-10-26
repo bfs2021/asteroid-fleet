@@ -5,6 +5,9 @@ import {
   GAS_PIRATE_HARVESTER_BIAS,
   PIRATE_BASE,
   SHIP_STATS,
+  SURVEY_RADIUS,
+  VEIN_SCAN_RADIUS,
+  VEIN_VALUE_SHARE,
   WAVE_INTERVAL,
   WAVE_WARNING,
 } from './config';
@@ -19,9 +22,9 @@ import {
   speed,
   type Ctx,
 } from './ctx';
-import { copy, dist, moveToward, rand, randRange, seeded } from './math';
+import { copy, dist, dist2, moveToward, rand, randRange, seeded } from './math';
 import { lvl } from './research';
-import { log, maxHull } from './state';
+import { clusterCenters, log, maxHull } from './state';
 import type { GameState, Pirate, Ship, Vec3 } from './types';
 
 export function cargoHeat(s: GameState): number {
@@ -146,9 +149,69 @@ export function fighter(s: GameState, ship: Ship, dt: number, ctx: Ctx, engageme
   }
 }
 
-export function scout(s: GameState, ship: Ship, dt: number) {
-  ship.mode = 'patrol';
-  orbit(ship.pos, s.carrier.pos, 75, s.time * 0.15, ship.id * 1.7, speed(s, ship) * dt);
+/**
+ * Scouts survey asteroid clusters one by one, marking rich veins for drones,
+ * and chart every hazard that comes within sensor range. Once the whole
+ * system is surveyed they patrol and start a fresh sweep, so respawned rocks
+ * get scanned too.
+ */
+export function scout(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
+  const r = s.recon;
+  const sensor2 = SHIP_STATS.scout.sensor * SHIP_STATS.scout.sensor;
+  for (let i = 0; i < s.hazards.length; i++) {
+    if (r.hazards.includes(i)) continue;
+    const h = s.hazards[i];
+    if (dist2(h.pos, ship.pos) < sensor2) {
+      r.hazards.push(i);
+      log(s, `Scout charted a ${h.kind} field.`, 'warn');
+    }
+  }
+  const centers = clusterCenters(s.systems[s.systemId]);
+  let target = -1;
+  let bd = Infinity;
+  for (let i = 0; i < centers.length; i++) {
+    if (r.clusters.includes(i)) continue;
+    // Other scouts' targets are left to them.
+    if (ctx.byClass.scout.some((o) => o !== ship && o.targetId === i && o.mode === 'toAsteroid'))
+      continue;
+    const d = dist2(ship.pos, centers[i]);
+    if (d < bd) {
+      bd = d;
+      target = i;
+    }
+  }
+  const v = speed(s, ship) * dt;
+  if (target < 0) {
+    ship.mode = 'patrol';
+    ship.targetId = -1;
+    orbit(ship.pos, s.carrier.pos, 75, s.time * 0.15, ship.id * 1.7, v);
+    // A full lap later, sweep again.
+    if (r.clusters.length >= centers.length && Math.floor(s.time * 10) % 600 === ship.id % 600)
+      r.clusters.length = 0;
+    return;
+  }
+  ship.mode = 'toAsteroid';
+  ship.targetId = target;
+  if (moveToward(ship.pos, centers[target], v, SURVEY_RADIUS)) surveyCluster(s, target, ctx);
+}
+
+/** Mark cluster `i` surveyed and its rich rocks as veins. */
+export function surveyCluster(s: GameState, i: number, ctx: Ctx) {
+  const r = s.recon;
+  if (!r.clusters.includes(i)) r.clusters.push(i);
+  const c = clusterCenters(s.systems[s.systemId])[i];
+  // Drop veins whose rock was mined out and replaced.
+  r.veins = r.veins.filter((id) => ctx.asteroids.has(id));
+  const rich = ctx.maxValue * VEIN_VALUE_SHARE;
+  const r2 = VEIN_SCAN_RADIUS * VEIN_SCAN_RADIUS;
+  let found = 0;
+  for (const a of s.asteroids) {
+    if (a.ore <= 0 || a.value < rich || dist2(a.pos, c) > r2 || r.veins.includes(a.id)) continue;
+    r.veins.push(a.id);
+    ctx.veins.add(a.id);
+    found++;
+  }
+  if (found > 0) log(s, `Scout found ${found} rich vein${found > 1 ? 's' : ''}.`, 'good');
 }
 
 export function repairDrone(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
@@ -259,7 +322,7 @@ export function pirateTargetScore(s: GameState, sh: Ship): number {
 }
 
 function baseTargetScore(s: GameState, sh: Ship): number {
-  if (sh.cls === 'barge') return 4 + (sh.cargo / cargoCap(s, 'barge')) * 6; // full barges first
+  if (sh.cls === 'barge') return 4 + (sh.cargo / cargoCap(s, 'barge', sh)) * 6; // full barges first
   if (sh.cls === 'hauler' || sh.cls === 'harvester') return 2 + sh.cargo / 60;
   if (sh.cls === 'fighter') return 1.5;
   return 1;

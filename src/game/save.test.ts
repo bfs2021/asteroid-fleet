@@ -3,6 +3,7 @@ import { SAVE_VERSION, newGame } from '../sim/state';
 import saveV1 from './fixtures/save-v1.json';
 import saveV2 from './fixtures/save-v2.json';
 import saveV3 from './fixtures/save-v3.json';
+import saveV4 from './fixtures/save-v4.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
   SAVE_BACKUP_FAILED_NOTICE,
@@ -128,6 +129,18 @@ describe('migrate', () => {
     expect(fromV3.state.fields[1]).toEqual({ left: 10, rocks: [[0, 0.5, 0]] });
     for (const sh of fromV3.state.ships) expect(sh.bargeId).toBe(-1);
     expect(saveV3).not.toHaveProperty('containers');
+  });
+
+  it('migrates a v4 save to v5 with no modules and no reconnaissance', () => {
+    expect(saveV4.version).toBe(4);
+    const fromV4 = migrate(saveV4);
+    expect(fromV4.ok).toBe(true);
+    if (!fromV4.ok) return;
+    expect(fromV4.state.version).toBe(SAVE_VERSION);
+    expect(fromV4.state.recon).toEqual({ clusters: [], veins: [], hazards: [] });
+    expect(fromV4.state.containers).toHaveLength(1);
+    for (const sh of fromV4.state.ships) expect(sh.modules).toEqual([]);
+    expect(saveV4).not.toHaveProperty('recon');
   });
 
   it('applies one migration step per version, in order', () => {

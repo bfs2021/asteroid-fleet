@@ -127,7 +127,7 @@ export function Hud({
           <button
             className={tactical || autoTactical ? 'on' : ''}
             onClick={onTactical}
-            title="Tactical sensor view (also turns on when you zoom far out)"
+            title="Tactical sensor view (also turns on when you zoom far out). Cyan: scouted rich veins, orange: charted hazards"
           >
             Tactical
           </button>

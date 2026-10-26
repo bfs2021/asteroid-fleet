@@ -16,7 +16,7 @@ import { focus, isDoubleMiss } from './focus';
 import { engine, lerpPos } from '../game/engine';
 import { COVER_RADIUS, H2_STORM_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
-import { SHIP_CLASSES, type Vec3 } from '../sim/types';
+import { SHIP_CLASSES, type GameState, type Vec3 } from '../sim/types';
 import { AsteroidField } from './AsteroidField';
 import { Containers } from './Containers';
 import { Fleet } from './Fleet';
@@ -354,7 +354,14 @@ const ICON_COLORS: Record<string, THREE.Color> = {
   pirate: new THREE.Color('#ff3030').multiplyScalar(2),
   carrier: new THREE.Color('#ffffff').multiplyScalar(2),
   container: new THREE.Color('#f2b632').multiplyScalar(2),
+  hazard: new THREE.Color('#ff5a1f').multiplyScalar(2),
+  vein: new THREE.Color('#5affef').multiplyScalar(2.2),
 };
+
+function veinPos(s: GameState, id: number): Vec3 | null {
+  for (const a of s.asteroids) if (a.id === id) return a.ore > 0 ? a.pos : null;
+  return null;
+}
 
 function Tactical({ on }: { on: boolean }) {
   const geo = useMemo(() => {
@@ -382,6 +389,15 @@ function Tactical({ on }: { on: boolean }) {
         put(lerpPos(sh.id, sh.pos, a, tmp), ICON_COLORS[sh.cls]);
     for (const p of s.pirates) if (n < 2048) put(lerpPos(p.id, p.pos, a, tmp), ICON_COLORS.pirate);
     for (const c of s.containers) if (n < 2048) put(c.pos, ICON_COLORS.container);
+    // Scout reconnaissance: charted hazards and rich veins.
+    for (const i of s.recon.hazards) {
+      const h = s.hazards[i];
+      if (h && n < 2048) put(h.pos, ICON_COLORS.hazard);
+    }
+    for (const id of s.recon.veins) {
+      const v = veinPos(s, id);
+      if (v && n < 2048) put(v, ICON_COLORS.vein);
+    }
     geo.setDrawRange(0, n);
     pos.needsUpdate = true;
     col.needsUpdate = true;

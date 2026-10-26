@@ -202,7 +202,7 @@ function behave(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
     case 'fighter':
       return fighter(s, ship, dt, ctx, st.engagement);
     case 'scout':
-      return scout(s, ship, dt);
+      return scout(s, ship, dt, ctx);
     case 'repair':
       return repairDrone(s, ship, dt, ctx);
     case 'harvester':

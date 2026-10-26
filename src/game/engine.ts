@@ -106,7 +106,7 @@ class Engine {
     return this.host?.kind ?? null;
   }
 
-  /** Sim-host callback. Event batches from an older run epoch are ignored. */
+  /** Sim-host callback. An events batch from another epoch is ignored in `receive`. */
   onSimMessage(msg: OutMsg) {
     this.receive(msg);
   }
@@ -136,6 +136,7 @@ class Engine {
         this.applyFrame(msg);
         return;
       case 'events': {
+        // `onSimMessage` forwards every batch; a different run epoch stops here.
         if (msg.epoch !== this.epoch) return;
         const ids = new Set(msg.events.map((e) => e.id));
         this.events = [...msg.events, ...this.events.filter((e) => !ids.has(e.id))].slice(0, 50);

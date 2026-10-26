@@ -63,7 +63,7 @@ function write(key: string, v: string) {
   }
 }
 
-function LogPanel({
+export function LogPanel({
   carrier,
   onCarrier,
   severity,
@@ -81,7 +81,6 @@ function LogPanel({
     carrier,
     choices.map((c) => c.id),
   );
-  if (selected !== carrier) onCarrier(selected);
   const rows = filterEvents(mergeForInbox(s.log), selected, severity);
   return (
     <>

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { OfflineReport, Order } from '../sim/actions';
 import { focused, focusOp, newGame } from '../sim/state';
 import type { GameState, Pirate, Ship, Sim, Vec3 } from '../sim/types';
+import { formatEvent } from '../ui/events';
 import type { BusEvent } from './events';
 import { createSimHost, type SimHost } from './host';
 import { MODES, type Frame, type OutMsg } from './protocol';
@@ -9,6 +10,7 @@ import { PUMP_MS } from './runner';
 import { applySnapshot } from './snapshot';
 import { allowSaveOverwrite, loadGame, saveGame, saveOverwriteBlocked } from './save';
 import { getActiveSlot, writeSlot } from './slots';
+import { offerToasts, ToastQueue } from './toasts';
 
 const AUTOSAVE_MS = 15000;
 
@@ -26,7 +28,19 @@ class Engine {
   speed = 1;
   paused = false;
   offline: OfflineReport | null = null;
-  toast: { text: string; at: number } | null = null;
+  /**
+   * Toast queue (newest on top, a few visible). Expiry is time-based; the queue keeps
+   * a single timer and clears it when the next deadline changes.
+   */
+  readonly toasts = new ToastQueue(
+    () => Date.now(),
+    () => this.emit(),
+  );
+  /**
+   * Carrier the player asked to look at (toast Go to). The mirror still follows
+   * `focusOp` until carrier switching (#77) posts this id to the worker.
+   */
+  focusedCarrierId = 0;
   /** Recent events from the sim, newest first; a merged event replaces its earlier copy. */
   events: BusEvent[] = [];
   /** Shown when the stored save could not be loaded. Autosave stays off. */
@@ -103,10 +117,11 @@ class Engine {
       case 'events': {
         const ids = new Set(msg.events.map((e) => e.id));
         this.events = [...msg.events, ...this.events.filter((e) => !ids.has(e.id))].slice(0, 50);
+        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId, formatEvent)) this.emit();
         return;
       }
       case 'error':
-        this.toast = { text: msg.text, at: Date.now() };
+        this.toasts.push({ text: msg.text, severity: 'warn', carrierId: null });
         this.emit();
         return;
       case 'snapshot': {
@@ -122,6 +137,8 @@ class Engine {
   private adopt(state: GameState) {
     const first = this.ships.size === 0 && this.pirates.size === 0;
     this.state = state;
+    if (!state.ops.some((op) => op.id === this.focusedCarrierId))
+      this.focusedCarrierId = focusOp(state).id;
     this.ships.clear();
     this.pirates.clear();
     const op = focusOp(state);
@@ -191,6 +208,28 @@ class Engine {
     return a < 0 ? 0 : a > 1 ? 1 : a;
   }
 
+  /**
+   * Point the UI at a carrier. With one carrier this only records the id; #77 will
+   * send it to the worker and switch the mirror. Unknown ids are ignored.
+   */
+  focusCarrier(carrierId: number) {
+    if (!this.state.ops.some((op) => op.id === carrierId)) return;
+    this.focusedCarrierId = carrierId;
+  }
+
+  /** Drop a toast. The next one waiting takes the free slot. */
+  dismissToast(key: string | null) {
+    this.toasts.dismiss(key);
+    this.emit();
+  }
+
+  /** Focus the toast's carrier through `focusCarrier` and close it. */
+  goToToast(key: string | null) {
+    const carrierId = this.toasts.goTo(key);
+    if (carrierId !== null) this.focusCarrier(carrierId);
+    this.emit();
+  }
+
   /** An order for the focused carrier. Errors come back from the sim as a toast. */
   dispatch(order: Order) {
     this.host?.post({ t: 'cmd', cmd: { ...order, carrierId: focusOp(this.state).id } });
@@ -215,6 +254,7 @@ class Engine {
   }
 
   replace(state: GameState) {
+    this.toasts.clear();
     this.saveNotice = null;
     this.saveBackupFailed = false;
     allowSaveOverwrite();
@@ -283,7 +323,7 @@ class Engine {
     }
     if (this.writeFailures.has(text)) return;
     this.writeFailures.add(text);
-    this.toast = { text, at: Date.now() };
+    this.toasts.push({ text, severity: 'warn', carrierId: null });
     this.emit();
   }
 

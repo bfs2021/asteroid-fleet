@@ -14,6 +14,7 @@ import {
   importSave,
   loadGame,
   readBackups,
+  readPrimaryText,
   saveGame,
   saveOverwriteBlocked,
   type LoadResult,
@@ -236,9 +237,25 @@ describe('unreadable saves', () => {
       (key) => key.startsWith(`${SAVE_BACKUP_KEY}-`) && mem.idb.get(key) === second,
     );
     expect(extras).toHaveLength(1);
-    expect(local.get(extras[0])).toBe(second);
+    // Timestamped backups live only in IndexedDB when it accepted the write.
+    expect(local.has(extras[0])).toBe(false);
     const stored = await readBackups();
     expect(stored.map((entry) => entry.text).sort()).toEqual([first, second].sort());
+  });
+
+  it('reads the raw primary for the unreadable-save download, from either store', async () => {
+    expect(await readPrimaryText()).toBeNull();
+    local.set(SAVE_KEY, '{"local"');
+    expect(await readPrimaryText()).toBe('{"local"');
+    mem.idb.set(SAVE_KEY, '{"idb"');
+    expect(await readPrimaryText()).toBe('{"idb"');
+  });
+
+  it('keeps bytes from a non-JSON IndexedDB value instead of a bare [object] string', async () => {
+    mem.idb.set(SAVE_KEY, new TextEncoder().encode('{"bytes"').buffer);
+    const loaded = unreadable(await loadGame());
+    expect(loaded.backedUp).toBe(true);
+    expect(mem.idb.get(SAVE_BACKUP_KEY)).toBe('{"bytes"');
   });
 
   it('does not rewrite a backup that already holds the same bytes', async () => {

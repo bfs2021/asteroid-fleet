@@ -142,7 +142,7 @@ function download(name: string, body: string) {
 }
 
 /** Replacing the live game loses it unless it is in a slot; say so, and warn about an unbacked-up save. */
-function confirmReplace(what: string): boolean {
+export function confirmReplace(what: string): boolean {
   const lost = engine.saveBackupFailed
     ? ' The unreadable save could not be backed up and will be lost.'
     : ' Your current game is replaced unless it is saved in a slot.';

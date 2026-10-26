@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { engine, useGame } from '../game/engine';
-import { readBackups } from '../game/save';
+import { readBackups, readPrimaryText } from '../game/save';
 import { updateSettings, useSettings } from '../game/settings';
 import { Scene } from '../render/Scene';
 import { SHIP_STATS } from '../sim/config';
@@ -119,6 +119,16 @@ function Offline() {
   );
 }
 
+function downloadText(name: string, body: string) {
+  const url = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  // Revoking in the same task can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 async function downloadBackups() {
   const entries = await readBackups();
   if (entries.length === 0) return;
@@ -126,13 +136,17 @@ async function downloadBackups() {
     entries.length === 1
       ? entries[0].text
       : JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.key, entry.text])));
-  const blob = new Blob([body], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = entries.length === 1 ? `${entries[0].key}.txt` : 'asteroid-fleet-save-backups.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadText(
+    entries.length === 1 ? `${entries[0].key}.txt` : 'asteroid-fleet-save-backups.json',
+    body,
+  );
+}
+
+/** The primary save as it sits in storage, for when no backup could be written. */
+async function downloadUnreadable() {
+  const text = await readPrimaryText();
+  if (text === null) return;
+  downloadText('asteroid-fleet-unreadable-save.txt', text);
 }
 
 function SaveNotice() {
@@ -141,12 +155,16 @@ function SaveNotice() {
   return (
     <div className="save-notice" role="alert">
       <p>{engine.saveNotice} Automatic saving is paused so that data is left untouched.</p>
-      {!engine.saveBackupFailed && (
-        <div className="row">
-          <button onClick={() => engine.reset()}>Start new game (keeps backup)</button>
-          <button onClick={() => void downloadBackups()}>Download backup</button>
-        </div>
-      )}
+      <div className="row">
+        {engine.saveBackupFailed ? (
+          <button onClick={() => void downloadUnreadable()}>Download unreadable save</button>
+        ) : (
+          <>
+            <button onClick={() => engine.reset()}>Start new game (keeps backup)</button>
+            <button onClick={() => void downloadBackups()}>Download backup</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

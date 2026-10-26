@@ -4,6 +4,14 @@ import type { SimEvent } from '../sim/types';
 export type CarrierFilter = 'all' | number;
 export type SeverityFilter = 'all' | 'warn+' | 'critical';
 
+/** One inbox row. `seq` separates rows that share a kind, carrier, and time, including Legacy lines at t=0. */
+export type InboxRow = SimEvent & { seq: number };
+
+/** React key for an inbox row. Legacy lines can share kind, carrier, and t. */
+export function inboxKey(row: InboxRow): string {
+  return `${row.kind}-${row.carrierId}-${row.t}-${row.seq}`;
+}
+
 /**
  * The Log tab reads `GameState.log`. It is saved (so a reload keeps it, including Legacy
  * lines from older saves) and already carries `carrierId`, so one list covers every carrier.
@@ -12,13 +20,14 @@ export type SeverityFilter = 'all' | 'warn+' | 'critical';
  * so the inbox applies the same kind + carrier window here. Legacy lines stay separate:
  * collapsing them would hide the old text.
  */
-export function mergeForInbox(events: readonly SimEvent[]): SimEvent[] {
-  const open = new Map<string, { start: number; ev: SimEvent }>();
-  const chronological: SimEvent[] = [];
+export function mergeForInbox(events: readonly SimEvent[]): InboxRow[] {
+  const open = new Map<string, { start: number; ev: InboxRow }>();
+  const chronological: InboxRow[] = [];
+  let seq = 0;
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i];
     if (ev.kind === 'Legacy') {
-      chronological.push({ ...ev });
+      chronological.push({ ...ev, seq: seq++ });
       continue;
     }
     const key = `${ev.kind}:${ev.carrierId}`;
@@ -31,12 +40,12 @@ export function mergeForInbox(events: readonly SimEvent[]): SimEvent[] {
       cur.ev.severity = ev.severity;
       cur.ev.data = ev.data;
     } else {
-      const merged = { ...ev };
+      const merged: InboxRow = { ...ev, seq: seq++ };
       open.set(key, { start: ev.t, ev: merged });
       chronological.push(merged);
     }
   }
-  const newestFirst: SimEvent[] = [];
+  const newestFirst: InboxRow[] = [];
   for (let i = chronological.length - 1; i >= 0; i--) newestFirst.push(chronological[i]);
   // A window's displayed time is its latest event, which can be after a group that started later.
   newestFirst.sort((a, b) => b.t - a.t);
@@ -50,11 +59,11 @@ export function activeCarrier(carrier: CarrierFilter, ids: readonly number[]): C
 }
 
 /** `warn+` is warn and critical. The list stays newest-first. */
-export function filterEvents(
-  events: readonly SimEvent[],
+export function filterEvents<T extends SimEvent>(
+  events: readonly T[],
   carrier: CarrierFilter,
   severity: SeverityFilter,
-): SimEvent[] {
+): T[] {
   return events.filter((ev) => {
     if (carrier !== 'all' && ev.carrierId !== carrier) return false;
     if (severity === 'critical') return ev.severity === 'critical';

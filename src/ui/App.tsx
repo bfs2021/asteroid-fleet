@@ -12,6 +12,7 @@ import {
   activeCarrier,
   carrierChoices,
   filterEvents,
+  inboxKey,
   mergeForInbox,
   type CarrierFilter,
   type SeverityFilter,
@@ -117,7 +118,7 @@ function LogPanel() {
       </div>
       <div className="log">
         {rows.map((l) => (
-          <div key={`${l.kind}-${l.carrierId}-${l.t}`} className={toneClass(l.severity)}>
+          <div key={inboxKey(l)} className={toneClass(l.severity)}>
             <span className="t">{new Date(l.t * 1000).toISOString().slice(11, 19)}</span>
             {formatEvent(l)}
             {l.count > 1 && <span className="t">x{l.count}</span>}

@@ -3,7 +3,7 @@ import { MERGE_WINDOW_S } from '../game/events';
 import { SEVERITY } from '../sim/state';
 import type { EventData, SimEvent, SimEventKind } from '../sim/types';
 import { formatEvent } from './events';
-import { activeCarrier, carrierChoices, filterEvents, mergeForInbox } from './inbox';
+import { activeCarrier, carrierChoices, filterEvents, inboxKey, mergeForInbox } from './inbox';
 
 function ev<K extends SimEventKind>(
   kind: K,
@@ -56,6 +56,16 @@ describe('inbox merge', () => {
       ['VeinFound', 4, 2],
       ['ShipLost', 3, 1],
     ]);
+  });
+
+  it('gives two Legacy lines at t=0 distinct keys', () => {
+    const log = [
+      ev('Legacy', 0, { text: 'Docked.' }, { severity: 'info' }),
+      ev('Legacy', 0, { text: 'Storm passed.' }, { severity: 'good' }),
+    ];
+    const rows = mergeForInbox(log);
+    expect(rows.map((r) => formatEvent(r))).toEqual(['Docked.', 'Storm passed.']);
+    expect(inboxKey(rows[0])).not.toBe(inboxKey(rows[1]));
   });
 
   it('keeps Legacy lines intact so old saves still render', () => {

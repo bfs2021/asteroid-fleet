@@ -1,3 +1,4 @@
+import { queueRebuild } from './automation';
 // Per-tick lookup context and the small helpers every behaviour module shares.
 // The context is derived from GameState at the start of each step and never
 // saved; its containers are reused between ticks to keep the hot path free of
@@ -279,6 +280,7 @@ export function destroyShip(s: GameState, ship: Ship, why: string) {
   s.fx.push({ kind: 'explosion', a: copy(ship.pos), b: copy(ship.pos), ttl: 0.8 });
   for (const h of s.hangars) h.items = h.items.filter((it) => it.shipId !== ship.id);
   s.stats.shipsLost++;
+  queueRebuild(s, ship);
   log(s, `${SHIP_STATS[ship.cls].name} lost (${why}).`, 'bad');
 }
 

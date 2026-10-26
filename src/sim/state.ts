@@ -24,7 +24,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 const NAMES = [
   'Kestrel',
@@ -232,6 +232,7 @@ interface Carry {
   lifetime: GameState['lifetime'];
   doctrine?: GameState['doctrine'];
   rules?: GameState['rules'];
+  automation?: GameState['automation'];
 }
 
 export function newGame(seed = 1337, carry?: Carry): GameState {
@@ -269,6 +270,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
         stance: {},
         launchOrder: ['fighter', 'scout', 'drone', 'repair', 'hauler', 'barge', 'harvester'],
         launchTimer: 0,
+        target: {},
       },
       {
         id: 2,
@@ -278,6 +280,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
         stance: {},
         launchOrder: ['fighter', 'drone', 'hauler', 'barge', 'repair', 'scout', 'harvester'],
         launchTimer: 0,
+        target: {},
       },
     ],
     ships: [],
@@ -295,6 +298,9 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     wave: { timer: Infinity, warning: false, active: false, size: 0 },
     storm: { timer: Infinity, active: 0 },
     reserveTimers: {},
+    automation: carry?.automation
+      ? { ...carry.automation, rebuildQueue: [], timer: 0 }
+      : { autoBuy: false, autoRebuild: false, creditFloor: 0, rebuildQueue: [], timer: 0 },
     stats: {
       oreValueDelivered: 0,
       creditsEarned: 0,

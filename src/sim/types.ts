@@ -46,6 +46,20 @@ export interface Hangar {
   /** Classes launch in this order; classes not listed launch last. */
   launchOrder: ShipClass[];
   launchTimer: number;
+  /** Auto-buy target: how many ships of each class this hangar should hold. */
+  target: Partial<Record<ShipClass, number>>;
+}
+
+export interface Automation {
+  /** Buy toward each hangar's target composition (needs the autoBuy research). */
+  autoBuy: boolean;
+  /** Pay to rebuild lost ships (needs the autoRebuild research). */
+  autoRebuild: boolean;
+  /** Automation never spends credits below this. */
+  creditFloor: number;
+  /** Lost ships waiting for a paid rebuild, oldest first. */
+  rebuildQueue: { cls: ShipClass; hangarId: number }[];
+  timer: number;
 }
 
 export type ShipMode =
@@ -216,6 +230,7 @@ export interface GameState {
   wave: { timer: number; warning: boolean; active: boolean; size: number };
   storm: { timer: number; active: number };
   reserveTimers: Partial<Record<ShipClass, number>>;
+  automation: Automation;
   stats: Stats;
   lifetime: { prestiges: number; researchEarned: number };
   incomeAvg: number; // rolling credits/s, all sources (salvage included)

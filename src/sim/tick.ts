@@ -1,3 +1,4 @@
+import { automation } from './automation';
 // One fixed simulation step. Behaviour lives in mining.ts, combat.ts, world.ts
 // and warp.ts; ctx.ts holds the per-tick lookups they share.
 
@@ -58,6 +59,7 @@ export function step(s: GameState, dt = DT) {
   refine(s, dt, ctx);
   field(s, dt);
   reserves(s, dt, ctx);
+  automation(s, dt);
   drift(s, dt);
 
   // cleanup: compact in place, keeping order

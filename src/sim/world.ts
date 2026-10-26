@@ -120,8 +120,13 @@ export function reserves(s: GameState, dt: number, ctx: Ctx) {
     const t = (s.reserveTimers[cls] ?? cooldown) - dt;
     s.reserveTimers[cls] = t;
     if (t <= 0) {
-      if (createShip(s, cls))
+      if (createShip(s, cls)) {
         log(s, `Reserve rebuilt a ${SHIP_STATS[cls].name.toLowerCase()}.`, 'good');
+        // The free reserve covered this loss; do not also pay for it.
+        const q = s.automation.rebuildQueue;
+        const i = q.findIndex((x) => x.cls === cls);
+        if (i >= 0) q.splice(i, 1);
+      }
       s.reserveTimers[cls] = cooldown;
     }
   }

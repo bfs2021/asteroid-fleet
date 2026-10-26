@@ -20,7 +20,21 @@ export type Migration = (save: SaveBlob) => SaveBlob;
  * A gap (no step for a version this build claims to support) is an unknown save:
  * callers back that up instead of dropping it.
  */
-export const migrations: Record<number, Migration> = {};
+export const migrations: Record<number, Migration> = {
+  // v2: automation settings and a per-hangar auto-buy target.
+  1: (save) => {
+    save.automation = {
+      autoBuy: false,
+      autoRebuild: false,
+      creditFloor: 0,
+      rebuildQueue: [],
+      timer: 0,
+    };
+    if (Array.isArray(save.hangars))
+      for (const h of save.hangars) if (h && typeof h === 'object') h.target ??= {};
+    return save;
+  },
+};
 
 export function applyMigrationSteps(
   save: SaveBlob,
@@ -84,6 +98,7 @@ function validateSave(save: SaveBlob): MigrateResult {
   if (!isRecord(save.stats)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.doctrine)) return { ok: false, reason: 'corrupt' };
   if (typeof save.rng !== 'number') return { ok: false, reason: 'corrupt' };
+  if (!isRecord(save.automation)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.wave) || !isTimer(save.wave.timer)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.storm) || !isTimer(save.storm.timer)) return { ok: false, reason: 'corrupt' };
 

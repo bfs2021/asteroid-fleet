@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { engine, useGame } from '../game/engine';
+import { focus } from '../render/focus';
 import { RETROFIT_COST, shipCost } from '../sim/actions';
 import {
   HANGAR_SLOT_COST,
@@ -314,7 +315,10 @@ export function FleetPanel() {
             selected={sel === h.id}
             onSelect={() => setSel(h.id)}
             selShip={selShip}
-            onShip={(id) => setSelShip(id === selShip ? -1 : id)}
+            onShip={(id) => {
+              setSelShip(id === selShip ? -1 : id);
+              focus.set(id === selShip ? null : id);
+            }}
           />
           {selShip >= 0 && h.items.some((it) => it.shipId === selShip) && (
             <ShipDetail id={selShip} />

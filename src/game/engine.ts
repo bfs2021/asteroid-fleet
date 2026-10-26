@@ -117,7 +117,7 @@ class Engine {
       case 'events': {
         const ids = new Set(msg.events.map((e) => e.id));
         this.events = [...msg.events, ...this.events.filter((e) => !ids.has(e.id))].slice(0, 50);
-        if (offerToasts(this.toasts, msg.events, focusOp(this.state).id, formatEvent)) this.emit();
+        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId, formatEvent)) this.emit();
         return;
       }
       case 'error':

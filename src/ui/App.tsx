@@ -9,6 +9,7 @@ import { DoctrinePanel } from './DoctrinePanel';
 import { downloadFile } from './download';
 import { formatEvent, toneClass } from './events';
 import {
+  activeCarrier,
   carrierChoices,
   filterEvents,
   mergeForInbox,
@@ -67,7 +68,12 @@ function LogPanel() {
   const [carrier, setCarrier] = useState<CarrierFilter>('all');
   const [severity, setSeverity] = useState<SeverityFilter>('all');
   const choices = carrierChoices(engine.state.ops, s.systems);
-  const rows = filterEvents(mergeForInbox(s.log), carrier, severity);
+  const selected = activeCarrier(
+    carrier,
+    choices.map((c) => c.id),
+  );
+  if (selected !== carrier) setCarrier(selected);
+  const rows = filterEvents(mergeForInbox(s.log), selected, severity);
   return (
     <>
       <h3>This run</h3>
@@ -82,7 +88,7 @@ function LogPanel() {
           Carrier{' '}
           <select
             aria-label="Carrier"
-            value={carrier === 'all' ? 'all' : String(carrier)}
+            value={selected === 'all' ? 'all' : String(selected)}
             onChange={(e) => {
               const v = e.target.value;
               setCarrier(v === 'all' ? 'all' : Number(v));
@@ -110,8 +116,8 @@ function LogPanel() {
         </label>
       </div>
       <div className="log">
-        {rows.map((l, i) => (
-          <div key={`${l.kind}-${l.carrierId}-${l.t}-${i}`} className={toneClass(l.severity)}>
+        {rows.map((l) => (
+          <div key={`${l.kind}-${l.carrierId}-${l.t}`} className={toneClass(l.severity)}>
             <span className="t">{new Date(l.t * 1000).toISOString().slice(11, 19)}</span>
             {formatEvent(l)}
             {l.count > 1 && <span className="t">x{l.count}</span>}

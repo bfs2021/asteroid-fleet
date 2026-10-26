@@ -38,7 +38,15 @@ export function mergeForInbox(events: readonly SimEvent[]): SimEvent[] {
   }
   const newestFirst: SimEvent[] = [];
   for (let i = chronological.length - 1; i >= 0; i--) newestFirst.push(chronological[i]);
+  // A window's displayed time is its latest event, which can be after a group that started later.
+  newestFirst.sort((a, b) => b.t - a.t);
   return newestFirst;
+}
+
+/** The selected carrier, or All when that carrier is no longer in the run. */
+export function activeCarrier(carrier: CarrierFilter, ids: readonly number[]): CarrierFilter {
+  if (carrier === 'all' || ids.includes(carrier)) return carrier;
+  return 'all';
 }
 
 /** `warn+` is warn and critical. The list stays newest-first. */

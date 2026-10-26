@@ -3,7 +3,7 @@ import { MERGE_WINDOW_S } from '../game/events';
 import { SEVERITY } from '../sim/state';
 import type { EventData, SimEvent, SimEventKind } from '../sim/types';
 import { formatEvent } from './events';
-import { carrierChoices, filterEvents, mergeForInbox } from './inbox';
+import { activeCarrier, carrierChoices, filterEvents, mergeForInbox } from './inbox';
 
 function ev<K extends SimEventKind>(
   kind: K,
@@ -43,6 +43,19 @@ describe('inbox merge', () => {
     const rewound = ev('ReserveRebuilt', 1, { cls: 'hauler' });
     const rows = mergeForInbox([rewound, late, other, same]);
     expect(rows.map((r) => r.count)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('orders a group by its latest event, ahead of one that started later', () => {
+    const log = [
+      ev('VeinFound', 4, { veins: 2 }),
+      ev('ShipLost', 3, { cls: 'drone', cause: 'destroyed' }),
+      ev('VeinFound', 1, { veins: 1 }),
+    ];
+    const rows = mergeForInbox(log);
+    expect(rows.map((r) => [r.kind, r.t, r.count])).toEqual([
+      ['VeinFound', 4, 2],
+      ['ShipLost', 3, 1],
+    ]);
   });
 
   it('keeps Legacy lines intact so old saves still render', () => {
@@ -87,6 +100,12 @@ describe('inbox filters', () => {
     ]);
     expect(filterEvents(rows, 'all', 'critical').map((r) => r.kind)).toEqual(['PiratesArrived']);
     expect(filterEvents(rows, 1, 'critical')).toEqual([]);
+  });
+
+  it('drops a carrier filter once that carrier is gone', () => {
+    expect(activeCarrier('all', [0])).toBe('all');
+    expect(activeCarrier(1, [0, 1])).toBe(1);
+    expect(activeCarrier(4, [0, 1])).toBe('all');
   });
 
   it('labels a carrier by its system, and by id when the name is shared or missing', () => {

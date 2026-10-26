@@ -24,6 +24,28 @@ describe('scaling', () => {
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 
+  it('ticks 1000 ships with auto-buy and auto-rebuild within budget', () => {
+    const s = stressGame(1000, 600, 40);
+    s.researchLevels.autoBuy = 1;
+    s.researchLevels.autoRebuild = 1;
+    s.automation.autoBuy = true;
+    s.automation.autoRebuild = true;
+    s.credits = 1e12;
+    // Steady state: every hangar wants what it holds, so each pass scans every slot and class.
+    for (const h of s.hangars)
+      for (const it of h.items) {
+        const cls = s.ships.find((x) => x.id === it.shipId)!.cls;
+        h.target[cls] = (h.target[cls] ?? 0) + 1;
+      }
+    for (let i = 0; i < 50; i++) step(s);
+    const n = 200;
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) step(s);
+    const ms = (performance.now() - t0) / n;
+    console.log(`tick with automation: ${ms.toFixed(2)} ms (${s.ships.length} ships)`);
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
   it('stays deterministic at scale', () => {
     const a = stressGame(300, 300, 30, 5);
     const b = stressGame(300, 300, 30, 5);

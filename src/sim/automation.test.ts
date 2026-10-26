@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { apply, shipCost } from './actions';
-import { AUTOMATION_INTERVAL, automation } from './automation';
+import { AUTOMATION_INTERVAL, automation, rebuildQueueCap } from './automation';
 import { destroyShip } from './ctx';
 import { ZONE_RULE_UNLOCKS } from './config';
 import { buyResearch } from './research';
@@ -103,6 +103,29 @@ describe('auto-rebuild', () => {
     s.credits = 5000;
     pass(s);
     expect(count(s, 'drone')).toBe(4);
+  });
+
+  it('does not queue losses while the toggle is off', () => {
+    const s = newGame(3);
+    buyResearchFree(s, 'autoRebuild');
+    lose(s, 'drone');
+    expect(s.automation.rebuildQueue).toHaveLength(0);
+  });
+
+  it('clears the queue when switched off and caps it at hangar capacity', () => {
+    const s = newGame(3);
+    buyResearchFree(s, 'autoRebuild');
+    apply(s, { type: 'setAutomation', patch: { autoRebuild: true } });
+    const cap = rebuildQueueCap(s);
+    for (let i = 0; i < cap + 20; i++) {
+      s.automation.rebuildQueue.push({ cls: 'drone', hangarId: 1 });
+    }
+    pass(s);
+    expect(s.automation.rebuildQueue.length).toBeLessThanOrEqual(cap);
+    lose(s, 'drone');
+    expect(s.automation.rebuildQueue.length).toBeLessThanOrEqual(cap);
+    apply(s, { type: 'setAutomation', patch: { autoRebuild: false } });
+    expect(s.automation.rebuildQueue).toHaveLength(0);
   });
 
   it('does not queue losses before the research', () => {

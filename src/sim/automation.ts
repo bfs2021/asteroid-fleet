@@ -17,8 +17,19 @@ export const engagementUnlocked = (s: GameState) =>
 
 /** Remember a lost ship so paid auto-rebuild can replace it. */
 export function queueRebuild(s: GameState, ship: Ship) {
-  if (!autoRebuildUnlocked(s)) return;
-  s.automation.rebuildQueue.push({ cls: ship.cls, hangarId: ship.hangarId });
+  if (!s.automation.autoRebuild || !autoRebuildUnlocked(s)) return;
+  const q = s.automation.rebuildQueue;
+  q.push({ cls: ship.cls, hangarId: ship.hangarId });
+  trimQueue(s);
+}
+
+/** The queue never holds more losses than the hangars have slots. */
+export const rebuildQueueCap = (s: GameState) => s.hangars.reduce((n, h) => n + h.slots, 0);
+
+function trimQueue(s: GameState) {
+  const q = s.automation.rebuildQueue;
+  const extra = q.length - rebuildQueueCap(s);
+  if (extra > 0) q.splice(0, extra); // drop the oldest
 }
 
 /** Buy one ship into `hangarId` if it fits and the credit floor holds. */
@@ -38,6 +49,10 @@ export function automation(s: GameState, dt: number) {
   a.timer -= dt;
   if (a.timer > 0) return;
   a.timer = AUTOMATION_INTERVAL;
+
+  // Also heals saves written before the queue was gated and capped.
+  if (!a.autoRebuild) a.rebuildQueue.length = 0;
+  else trimQueue(s);
 
   if (a.autoRebuild && autoRebuildUnlocked(s)) {
     // Oldest loss first; stop at the first one we cannot pay for, so order holds.
@@ -60,14 +75,21 @@ export function automation(s: GameState, dt: number) {
 
   if (a.autoBuy && autoBuyUnlocked(s)) {
     // One ship per hangar per pass keeps spending spread across hangars.
+    const owned = new Map<string, number>();
+    for (const x of s.ships) {
+      const k = `${x.hangarId}:${x.cls}`;
+      owned.set(k, (owned.get(k) ?? 0) + 1);
+    }
     for (const h of s.hangars) {
       for (const cls of SHIP_CLASSES) {
         const want = h.target[cls] ?? 0;
         if (want <= 0) continue;
-        let have = 0;
-        for (const it of h.items) if (s.ships.find((x) => x.id === it.shipId)?.cls === cls) have++;
-        if (have >= want) continue;
-        if (tryBuy(s, cls, h.id)) break;
+        const key = `${h.id}:${cls}`;
+        if ((owned.get(key) ?? 0) >= want) continue;
+        if (tryBuy(s, cls, h.id)) {
+          owned.set(key, (owned.get(key) ?? 0) + 1);
+          break;
+        }
       }
     }
   }

@@ -1,9 +1,11 @@
-import { entries, get, set } from 'idb-keyval';
+import { del, entries, get, set } from 'idb-keyval';
 import type { GameState } from '../sim/types';
 import { migrate, type SaveFailure } from './migrate';
 
 export const SAVE_KEY = 'asteroid-fleet-save';
 export const SAVE_BACKUP_KEY = 'asteroid-fleet-save-backup';
+/** Backups kept per store; older ones are deleted when a new one is written (#40). */
+export const MAX_BACKUPS = 5;
 
 export const SAVE_BACKUP_NOTICE = 'Your save could not be loaded and was backed up.';
 export const SAVE_BACKUP_FAILED_NOTICE =
@@ -164,12 +166,48 @@ async function chooseBackupKey(json: string): Promise<string | null> {
   return key;
 }
 
+/** Age order of a backup key: the canonical key is the first backup, then by timestamp. */
+function backupStamp(key: string): number {
+  if (key === SAVE_BACKUP_KEY) return 0;
+  const stamp = Number(key.slice(SAVE_BACKUP_KEY.length + 1));
+  return Number.isFinite(stamp) ? stamp : 0;
+}
+
+/** Backup keys past the newest `MAX_BACKUPS`. */
+function staleBackups(keys: string[]): string[] {
+  return keys.sort((a, b) => backupStamp(b) - backupStamp(a)).slice(MAX_BACKUPS);
+}
+
+/** Delete all but the newest `MAX_BACKUPS` backup keys in each store. */
+export async function pruneBackups(): Promise<void> {
+  try {
+    const keys = (await entries<string, unknown>())
+      .map(([key]) => key)
+      .filter((key) => typeof key === 'string' && isBackupKey(key));
+    await Promise.all(staleBackups(keys).map((key) => del(key)));
+  } catch {
+    /* IndexedDB unavailable */
+  }
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && isBackupKey(key)) keys.push(key);
+    }
+    for (const key of staleBackups(keys)) localStorage.removeItem(key);
+  } catch {
+    /* storage blocked */
+  }
+}
+
 async function backupRaw(json: string): Promise<boolean> {
   // Lock before the first await so a save kicked off mid-backup cannot land first.
   preservePrimary = true;
   const key = await chooseBackupKey(json);
   if (key === null) return true;
-  return writeStore(key, json, key === SAVE_BACKUP_KEY);
+  const ok = await writeStore(key, json, key === SAVE_BACKUP_KEY);
+  if (ok) await pruneBackups();
+  return ok;
 }
 
 function unreadable(reason: SaveFailure, backedUp: boolean): LoadResult {
@@ -181,10 +219,23 @@ function unreadable(reason: SaveFailure, backedUp: boolean): LoadResult {
   };
 }
 
+/**
+ * Writes the primary save. Once IndexedDB holds it, the localStorage copy is dropped
+ * rather than rewritten: a large fleet's JSON would otherwise eat the ~5 MB quota that
+ * slots and the IndexedDB-less fallback need (#40). Resolves false when nothing kept it.
+ */
 export async function saveGame(state: GameState): Promise<boolean> {
   if (preservePrimary) return false;
-  await writeStore(SAVE_KEY, JSON.stringify(state));
-  return true;
+  const json = JSON.stringify(state);
+  const ok = await writeStore(SAVE_KEY, json, false);
+  if (ok) {
+    try {
+      if (localStorage.getItem(SAVE_KEY) !== json) localStorage.removeItem(SAVE_KEY);
+    } catch {
+      /* storage blocked */
+    }
+  }
+  return ok;
 }
 
 export async function loadGame(): Promise<LoadResult> {

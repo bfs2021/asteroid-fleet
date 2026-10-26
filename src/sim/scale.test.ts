@@ -72,4 +72,24 @@ describe('scaling', () => {
       expect(seen.sort((x, y) => x - y)).toEqual(pts.map((_, i) => i));
     }
   });
+
+  it('grid stays small and still visits every point with NaN or huge positions', () => {
+    const pts = [
+      { pos: { x: 1, y: 0, z: 2 } },
+      { pos: { x: NaN, y: 0, z: 5 } },
+      { pos: { x: 1e12, y: 0, z: -1e12 } },
+      { pos: { x: Infinity, y: 0, z: -Infinity } },
+      { pos: { x: -40, y: 0, z: 30 } },
+    ];
+    const g = new PointGrid(16);
+    g.build(pts);
+    expect(g.nx * g.nz).toBeLessThan(100);
+    const seen: number[] = [];
+    g.rings(
+      { x: 0, y: 0, z: 0 },
+      () => true,
+      (i) => seen.push(i),
+    );
+    expect(seen.sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 4]);
+  });
 });

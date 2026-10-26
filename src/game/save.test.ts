@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAVE_VERSION, newGame } from '../sim/state';
+import { step } from '../sim/tick';
 import saveV1 from './fixtures/save-v1.json';
 import saveV2 from './fixtures/save-v2.json';
 import saveV3 from './fixtures/save-v3.json';
 import saveV4 from './fixtures/save-v4.json';
 import saveV5 from './fixtures/save-v5.json';
+import saveV6 from './fixtures/save-v6.json';
 import { applyMigrationSteps, migrate, type SaveBlob } from './migrate';
 import {
   SAVE_BACKUP_FAILED_NOTICE,
   SAVE_BACKUP_KEY,
   SAVE_BACKUP_NOTICE,
   SAVE_KEY,
+  MAX_BACKUPS,
   allowSaveOverwrite,
   decodeSave,
   exportSave,
@@ -37,6 +40,10 @@ vi.mock('idb-keyval', () => ({
   set: vi.fn<(key: string, value: string) => Promise<void>>(async (key, value) => {
     if (mem.fail) throw new Error('indexedDB unavailable');
     mem.idb.set(key, value);
+  }),
+  del: vi.fn<(key: string) => Promise<void>>(async (key) => {
+    if (mem.fail) throw new Error('indexedDB unavailable');
+    mem.idb.delete(key);
   }),
   entries: vi.fn<() => Promise<[string, unknown][]>>(async () => {
     if (mem.fail) throw new Error('indexedDB unavailable');
@@ -127,7 +134,8 @@ describe('migrate', () => {
     if (!fromV3.ok) return;
     expect(fromV3.state.version).toBe(SAVE_VERSION);
     expect(fromV3.state.containers).toEqual([]);
-    expect(fromV3.state.fields[1]).toEqual({ left: 10, rocks: [[0, 0.5, 0]] });
+    // v7 drops depletion records (#40).
+    expect(fromV3.state.fields).toEqual({});
     for (const sh of fromV3.state.ships) expect(sh.bargeId).toBe(-1);
     expect(saveV3).not.toHaveProperty('containers');
   });
@@ -159,6 +167,45 @@ describe('migrate', () => {
     expect(bad.ok && bad.state.miningIncomeAvg).toBe(0);
     const good = migrate({ ...structuredClone(saveV5), version: 6, miningIncomeAvg: 7 });
     expect(good.ok && good.state.miningIncomeAvg).toBe(7);
+  });
+
+  it('drops v6 depletion records, which the rare-roll change would misplace (#40)', () => {
+    expect(saveV6.version).toBe(6);
+    expect(Object.keys(saveV6.fields)).toHaveLength(1);
+    const r = migrate(saveV6);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.state.fields).toEqual({});
+    expect(r.state.miningIncomeAvg).toBe(3.5);
+  });
+
+  it('rebuilds a missing systems map from the seed (#40)', () => {
+    expect(saveV1.systems).toEqual([]);
+    const r = migrate(saveV1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.state.systems).toEqual(newGame(saveV1.seed).systems);
+    expect(r.state.systems[r.state.systemId]).toBeDefined();
+    const noSeed = migrate({ ...structuredClone(saveV6), systems: [], seed: undefined });
+    expect(noSeed).toEqual({ ok: false, reason: 'corrupt' });
+    const badId = migrate({ ...structuredClone(saveV6), systemId: 999 });
+    expect(badId).toEqual({ ok: false, reason: 'corrupt' });
+  });
+
+  it.each([
+    ['v1', saveV1],
+    ['v2', saveV2],
+    ['v3', saveV3],
+    ['v4', saveV4],
+    ['v5', saveV5],
+    ['v6', saveV6],
+  ])('a migrated %s fixture keeps running through step()', (_, fixture) => {
+    const r = migrate(fixture);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (let i = 0; i < 50; i++) step(r.state);
+    expect(Number.isFinite(r.state.credits)).toBe(true);
+    expect(r.state.time).toBeGreaterThan(0);
   });
 
   it('applies one migration step per version, in order', () => {
@@ -373,6 +420,46 @@ describe('unreadable saves', () => {
     expect(local.get(SAVE_BACKUP_KEY)).toBe(JSON.stringify(value));
     expect(await saveGame(newGame(6))).toBe(false);
     expect(mem.idb.get(SAVE_KEY)).toEqual(value);
+  });
+});
+
+describe('storage weight (#40)', () => {
+  it('keeps only the newest backups in each store', async () => {
+    for (let i = 0; i < MAX_BACKUPS + 3; i++) {
+      mem.idb.set(SAVE_KEY, `{"broken-${i}"`);
+      vi.spyOn(Date, 'now').mockReturnValue(1000 + i);
+      // Loads run one after another: each must see the backups the last one wrote.
+      // oxlint-disable-next-line no-await-in-loop
+      expect(unreadable(await loadGame()).backedUp).toBe(true);
+      vi.restoreAllMocks();
+    }
+    const idbBackups = [...mem.idb.keys()].filter((k) => k.startsWith(SAVE_BACKUP_KEY));
+    expect(idbBackups).toHaveLength(MAX_BACKUPS);
+    // The oldest (canonical) and the next ones went; the newest stays.
+    expect(mem.idb.has(SAVE_BACKUP_KEY)).toBe(false);
+    expect(mem.idb.get(`${SAVE_BACKUP_KEY}-${1000 + MAX_BACKUPS + 2}`)).toBe(
+      `{"broken-${MAX_BACKUPS + 2}"`,
+    );
+    expect(
+      [...local.keys()].filter((k) => k.startsWith(SAVE_BACKUP_KEY)).length,
+    ).toBeLessThanOrEqual(MAX_BACKUPS);
+  });
+
+  it('writes the primary save to IndexedDB only and drops a stale localStorage copy', async () => {
+    local.set(SAVE_KEY, 'stale');
+    expect(await saveGame(newGame(7))).toBe(true);
+    expect(typeof mem.idb.get(SAVE_KEY)).toBe('string');
+    expect(local.has(SAVE_KEY)).toBe(false);
+  });
+
+  it('falls back to localStorage without IndexedDB, and reports a save nothing kept', async () => {
+    mem.fail = true;
+    // One state: newGame stamps the clock, so two calls can differ.
+    const state = newGame(7);
+    expect(await saveGame(state)).toBe(true);
+    expect(local.get(SAVE_KEY)).toBe(JSON.stringify(state));
+    installLocalStorage({ rejectWrites: true });
+    expect(await saveGame(newGame(7))).toBe(false);
   });
 });
 

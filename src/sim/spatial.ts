@@ -1,6 +1,13 @@
 import type { Vec3 } from './types';
 
 /**
+ * Points with |x| or |z| beyond this, or NaN, do not size the grid: they sit in an edge
+ * cell, which never lies farther than the point itself, so searches still find them.
+ * Caps the grid at (2 * 4000 / cell)^2 cells however bad a position gets.
+ */
+export const GRID_LIMIT = 4000;
+
+/**
  * Uniform grid over the x/z plane, rebuilt from scratch each tick. Points are
  * bucketed by a stable counting sort, so each cell lists its points in array order and
  * searches can break ties by index exactly like a linear scan would.
@@ -27,12 +34,14 @@ export class PointGrid {
     let maxZ = -Infinity;
     for (let i = 0; i < n; i++) {
       const p = points[i].pos;
+      // Non-finite or far-flung points still get a cell (an edge one), but cannot size the grid.
+      if (!(Math.abs(p.x) <= GRID_LIMIT && Math.abs(p.z) <= GRID_LIMIT)) continue;
       if (p.x < minX) minX = p.x;
       if (p.x > maxX) maxX = p.x;
       if (p.z < minZ) minZ = p.z;
       if (p.z > maxZ) maxZ = p.z;
     }
-    if (!n) minX = maxX = minZ = maxZ = 0;
+    if (minX > maxX) minX = maxX = minZ = maxZ = 0;
     this.minX = minX;
     this.minZ = minZ;
     this.nx = Math.floor((maxX - minX) / this.cell) + 1;
@@ -57,16 +66,16 @@ export class PointGrid {
     for (let i = 0; i < n; i++) this.items[this.cursor[this.cellOf[i]]++] = i;
   }
 
-  /** Column of x, clamped into the grid. */
+  /** Column of x, clamped into the grid. NaN lands in column 0. */
   cx(x: number): number {
     const c = Math.floor((x - this.minX) / this.cell);
-    return c < 0 ? 0 : c >= this.nx ? this.nx - 1 : c;
+    return c >= this.nx ? this.nx - 1 : c > 0 ? c : 0;
   }
 
   /** Row of z, clamped into the grid. */
   cz(z: number): number {
     const c = Math.floor((z - this.minZ) / this.cell);
-    return c < 0 ? 0 : c >= this.nz ? this.nz - 1 : c;
+    return c >= this.nz ? this.nz - 1 : c > 0 ? c : 0;
   }
 
   /**

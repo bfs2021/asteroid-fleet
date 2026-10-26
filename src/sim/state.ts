@@ -25,7 +25,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 const NAMES = [
   'Kestrel',
@@ -101,7 +101,9 @@ export function spawnAsteroid(
   const far = Math.sqrt(center.x * center.x + center.z * center.z);
   const ore = pickOre(r, sys.tier);
   const maxOre = Math.round(80 + r() * 220);
-  const rare = lvl(s, 'rare') > 0 && r() < 0.04 * lvl(s, 'rare') ? 2.5 : 1;
+  // Always draw the roll, so researching rare ore never shifts the rocks after this one.
+  const rareRoll = r();
+  const rare = rareRoll < 0.04 * lvl(s, 'rare') ? 2.5 : 1;
   return {
     id: s.nextId++,
     pos,

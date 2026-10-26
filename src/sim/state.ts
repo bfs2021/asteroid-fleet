@@ -67,6 +67,11 @@ export function makeSystems(seed: number): StarSystem[] {
   }));
 }
 
+/** Storms in gas giant systems are H2 storms around the planet, not solar storms. */
+export function h2Storm(s: GameState): boolean {
+  return s.storm.active > 0 && s.systems[s.systemId].gasGiant;
+}
+
 export function gasGiantPos(sys: StarSystem): Vec3 {
   const r = seeded(sys.seed ^ 0x9a5);
   const a = r() * Math.PI * 2;
@@ -188,7 +193,7 @@ export function enterSystem(s: GameState, id: number) {
     if (Math.hypot(p.x, p.z) > 25) s.hazards.push(h);
   }
   s.wave = { timer: sys.tier === 1 ? Infinity : 60, warning: false, active: false, size: 0 };
-  s.storm = { timer: sys.tier >= 2 ? 90 + r() * 60 : Infinity, active: 0 };
+  s.storm = { timer: sys.tier >= 2 || sys.gasGiant ? 90 + r() * 60 : Infinity, active: 0 };
   for (const o of s.systems) if (o.distance <= sys.distance + 1) o.discovered = true;
   if (sys.tier > s.stats.furthestTier) s.stats.furthestTier = sys.tier;
   for (let t = 1; t <= sys.tier; t++) {

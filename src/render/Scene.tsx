@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { CameraRig } from './CameraRig';
 import { focus, isDoubleMiss } from './focus';
 import { engine, lerpPos } from '../game/engine';
-import { COVER_RADIUS, SHIP_STATS } from '../sim/config';
+import { COVER_RADIUS, H2_STORM_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
 import { SHIP_CLASSES, type Vec3 } from '../sim/types';
 import { AsteroidField } from './AsteroidField';
@@ -259,8 +259,15 @@ const GasGiant = memo(function GasGiant() {
       }),
     [],
   );
+  const storm = useRef<THREE.Mesh>(null);
   useFrame((st) => {
     mat.uniforms.uTime.value = st.clock.elapsedTime;
+    // H2 storm: one translucent shell, hidden (no draw call) when calm.
+    const m = storm.current;
+    if (m) {
+      m.visible = engine.state.storm.active > 0;
+      if (m.visible) m.rotation.y = st.clock.elapsedTime * 0.4;
+    }
   });
   if (!sys.gasGiant) return null;
   const p = gasGiantPos(sys);
@@ -268,6 +275,16 @@ const GasGiant = memo(function GasGiant() {
     <group position={[p.x, p.y, p.z]}>
       <mesh material={mat}>
         <sphereGeometry args={[25, 48, 32]} />
+      </mesh>
+      <mesh ref={storm} visible={false}>
+        <icosahedronGeometry args={[H2_STORM_RADIUS, 2]} />
+        <meshBasicMaterial
+          color="#ffb070"
+          wireframe
+          transparent
+          opacity={0.18}
+          depthWrite={false}
+        />
       </mesh>
       <mesh rotation={[Math.PI / 2.3, 0, 0]}>
         <ringGeometry args={[32, 44, 64]} />

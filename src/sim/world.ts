@@ -3,6 +3,8 @@
 
 import {
   COVER_RADIUS,
+  H2_STORM_DPS,
+  H2_STORM_RADIUS,
   DT,
   FUSION_H2,
   FUSION_RATE,
@@ -17,7 +19,15 @@ import { rule } from './doctrine';
 import { oreNear } from './mining';
 import { dist, dist2, moveToward, rand } from './math';
 import { lvl, reserveDefs } from './research';
-import { clusterCenters, createShip, log, maxEnergy, spawnAsteroid } from './state';
+import {
+  clusterCenters,
+  createShip,
+  gasGiantPos,
+  h2Storm,
+  log,
+  maxEnergy,
+  spawnAsteroid,
+} from './state';
 import type { GameState, Vec3 } from './types';
 
 export function power(s: GameState, dt: number) {
@@ -25,7 +35,10 @@ export function power(s: GameState, dt: number) {
   const sys = s.systems[s.systemId];
   const max = maxEnergy(s);
   let gain =
-    SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar')) * (s.storm.active > 0 ? 1.6 : 1);
+    SOLAR_RATE *
+    sys.brightness *
+    (1 + 0.2 * lvl(s, 'solar')) *
+    (s.storm.active > 0 && !h2Storm(s) ? 1.6 : 1);
   if (lvl(s, 'fusion') > 0 && c.h2 > 0 && c.energy < max) {
     const burn = Math.min(c.h2, FUSION_H2 * dt);
     c.h2 -= burn;
@@ -54,7 +67,11 @@ export function refine(s: GameState, dt: number, ctx: Ctx) {
     floor = Math.max(floor, warpCost(sys.distance, Math.max(0, sys.distance - 1)));
   }
   const avail = Math.max(0, c.energy - floor);
-  const amount = Math.min(c.ore, refineRate(c.refinery) * dt, avail / REFINE_ENERGY);
+  const amount = Math.min(
+    c.ore,
+    refineRate(c.refinery) * (1 + 0.25 * lvl(s, 'voidRefining')) * dt,
+    avail / REFINE_ENERGY,
+  );
   if (amount <= 0) return;
   const value = (c.oreValue / c.ore) * amount;
   c.ore -= amount;
@@ -70,12 +87,17 @@ export function refine(s: GameState, dt: number, ctx: Ctx) {
 }
 
 export function hazards(s: GameState, dt: number) {
+  const shield = 1 - 0.3 * lvl(s, 'stormShielding');
+  const h2 = h2Storm(s);
+  const solarStorm = s.storm.active > 0 && !h2;
+  const gas = h2 ? gasGiantPos(s.systems[s.systemId]) : null;
   for (const sh of s.ships) {
     if (sh.mode === 'docked') continue;
     for (const h of s.hazards)
       if (dist2(h.pos, sh.pos) < h.radius * h.radius) damageShip(s, sh, h.dps * dt);
-    if (s.storm.active > 0 && dist(sh.pos, s.carrier.pos) > COVER_RADIUS)
-      damageShip(s, sh, 0.6 * dt);
+    if (solarStorm && dist(sh.pos, s.carrier.pos) > COVER_RADIUS)
+      damageShip(s, sh, 0.6 * shield * dt);
+    if (h2 && dist(sh.pos, gas!) < H2_STORM_RADIUS) damageShip(s, sh, H2_STORM_DPS * shield * dt);
   }
 }
 

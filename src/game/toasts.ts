@@ -103,6 +103,11 @@ export class ToastQueue {
     return this.pending.length;
   }
 
+  /** True when this bus id already has a toast on screen or waiting. */
+  has(eventId: number): boolean {
+    return this.findEvent(eventId) !== null;
+  }
+
   /** Show or, when `eventId` matches a toast already queued, update that one. Returns its key. */
   push(input: ToastInput): string {
     const now = this.now();
@@ -256,7 +261,9 @@ export function offerToasts(
     .sort((a, b) => a.t - b.t || SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   let changed = false;
   for (const ev of ordered) {
-    if (!wantsToast(ev, focusedCarrierId)) continue;
+    // A toast already open for this id keeps receiving merges, even when the new
+    // payload would not have opened one (a barge loss followed by a drone).
+    if (!wantsToast(ev, focusedCarrierId) && !queue.has(ev.id)) continue;
     queue.push({
       eventId: ev.id,
       text: text(ev),

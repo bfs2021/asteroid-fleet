@@ -184,6 +184,22 @@ describe('toast queue', () => {
     expect(q.goTo(key)).toBeNull();
   });
 
+  it('keeps updating a ShipLost toast after a later loss would not open one', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    const text = (e: SimEvent) => (e.kind === 'ShipLost' ? `${e.data.cls} x${e.count}` : e.kind);
+    const barge = ev('ShipLost', { cls: 'barge', cause: 'destroyed' });
+    offerToasts(q, [bus(barge, 7)], 0, text);
+    expect(wantsToast(barge, 0)).toBe(true);
+    now.t = 5_000;
+    const follow = ev('ShipLost', { cls: 'drone', cause: 'destroyed' }, { count: 2, t: 1 });
+    expect(wantsToast(follow, 0)).toBe(false);
+    offerToasts(q, [bus(follow, 7)], 0, text);
+    expect(q.shown(now.t).map((t) => t.text)).toEqual(['drone x2']);
+    expect(q.shown(now.t + TOAST_MS.warn - 1)).toHaveLength(1);
+    expect(q.shown(now.t + TOAST_MS.warn)).toEqual([]);
+  });
+
   it('puts the newest severe event on top and skips inbox-only kinds', () => {
     const q = new ToastQueue(() => 0);
     offerToasts(

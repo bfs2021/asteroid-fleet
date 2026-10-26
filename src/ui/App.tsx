@@ -7,6 +7,7 @@ import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
 import { CarrierPanel } from './CarrierPanel';
 import { DoctrinePanel } from './DoctrinePanel';
+import { SceneBoundary } from './ErrorBoundary';
 import { FleetPanel } from './FleetPanel';
 import { Hud, fmt } from './Hud';
 import { ResearchPanel } from './ResearchPanel';
@@ -196,12 +197,14 @@ export function App() {
   return (
     <div className="app">
       <div className="canvas-wrap">
-        <Scene
-          tactical={tactical}
-          quality={settings.quality}
-          bloom={settings.bloom}
-          onAutoTactical={setAutoTactical}
-        />
+        <SceneBoundary>
+          <Scene
+            tactical={tactical}
+            quality={settings.quality}
+            bloom={settings.bloom}
+            onAutoTactical={setAutoTactical}
+          />
+        </SceneBoundary>
       </div>
       <Hud
         tactical={tactical}

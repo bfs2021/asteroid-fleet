@@ -59,3 +59,22 @@ test('saving goes through the worker and survives a reload', async ({ page }) =>
   expect(loaded.seed).toBe(saved.seed);
   expect(loaded.time).toBeGreaterThanOrEqual(saved.time);
 });
+
+test('shows a fallback instead of a blank screen without WebGL', async ({ page }) => {
+  await page.addInitScript(() => {
+    // Pretend the GPU is unavailable: every WebGL context request fails.
+    const proto = HTMLCanvasElement.prototype as unknown as {
+      getContext(this: HTMLCanvasElement, id: string, ...rest: unknown[]): unknown;
+    };
+    const orig = Object.getOwnPropertyDescriptor(proto, 'getContext')!
+      .value as typeof proto.getContext;
+    proto.getContext = function (id, ...rest) {
+      return id.startsWith('webgl') ? null : orig.call(this, id, ...rest);
+    };
+  });
+  await page.goto('./');
+  await expect(page.getByRole('alert')).toContainText('3D view unavailable');
+  // The rest of the UI still works.
+  await page.getByRole('button', { name: 'Take command' }).click();
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+});

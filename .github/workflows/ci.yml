@@ -23,6 +23,7 @@ jobs:
       # Balance is opt-in (`pnpm run balance`, BALANCE=1) and must stay out of CI.
       - run: pnpm test
       - run: pnpm run build
+      - run: pnpm run check:bundle
 
   e2e:
     runs-on: ubuntu-latest

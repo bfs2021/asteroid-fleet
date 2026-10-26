@@ -738,3 +738,15 @@ label.button {
 label.button:hover {
   border-color: var(--line-strong);
 }
+
+.scene-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: #cfe3ff;
+  background: #020308;
+}

@@ -7,9 +7,15 @@ export type SeverityFilter = 'all' | 'warn+' | 'critical';
 /** One inbox row. `seq` separates rows that share a kind, carrier, and time, including Legacy lines at t=0. */
 export type InboxRow = SimEvent & { seq: number };
 
-/** React key for an inbox row. Legacy lines can share kind, carrier, and t. */
+/**
+ * React key for an inbox row. Typed events are unique on kind + carrier + time, so the
+ * key does not include `seq`: when the log cap drops the oldest line, the remaining
+ * rows keep their keys. Legacy lines can share kind, carrier, and t, and `seq` counts
+ * those from the newest so dropping an older line does not renumber the rest.
+ */
 export function inboxKey(row: InboxRow): string {
-  return `${row.kind}-${row.carrierId}-${row.t}-${row.seq}`;
+  if (row.kind === 'Legacy') return `Legacy-${row.carrierId}-${row.t}-${row.seq}`;
+  return `${row.kind}-${row.carrierId}-${row.t}`;
 }
 
 /**
@@ -23,11 +29,10 @@ export function inboxKey(row: InboxRow): string {
 export function mergeForInbox(events: readonly SimEvent[]): InboxRow[] {
   const open = new Map<string, { start: number; ev: InboxRow }>();
   const chronological: InboxRow[] = [];
-  let seq = 0;
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i];
     if (ev.kind === 'Legacy') {
-      chronological.push({ ...ev, seq: seq++ });
+      chronological.push({ ...ev, seq: 0 });
       continue;
     }
     const key = `${ev.kind}:${ev.carrierId}`;
@@ -40,7 +45,7 @@ export function mergeForInbox(events: readonly SimEvent[]): InboxRow[] {
       cur.ev.severity = ev.severity;
       cur.ev.data = ev.data;
     } else {
-      const merged: InboxRow = { ...ev, seq: seq++ };
+      const merged: InboxRow = { ...ev, seq: 0 };
       open.set(key, { start: ev.t, ev: merged });
       chronological.push(merged);
     }
@@ -49,6 +54,11 @@ export function mergeForInbox(events: readonly SimEvent[]): InboxRow[] {
   for (let i = chronological.length - 1; i >= 0; i--) newestFirst.push(chronological[i]);
   // A window's displayed time is its latest event, which can be after a group that started later.
   newestFirst.sort((a, b) => b.t - a.t);
+  // Count Legacy rows from the newest. Dropping an older line leaves those keys alone.
+  let legacySeq = 0;
+  for (const row of newestFirst) {
+    if (row.kind === 'Legacy') row.seq = legacySeq++;
+  }
   return newestFirst;
 }
 

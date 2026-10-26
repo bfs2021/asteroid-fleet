@@ -114,6 +114,26 @@ describe('sim runner', () => {
     ]);
   });
 
+  it('stamps events with the run epoch, and replace advances it', () => {
+    const s = newGame(5);
+    const { host, out } = local(s);
+    const first = out.find((m) => m.t === 'events');
+    expect(first?.t === 'events' && first.epoch).toBe(0);
+    out.length = 0;
+    host.post({ t: 'replace', state: newGame(6), epoch: 3 });
+    const st = host.runner.state;
+    if (!st) throw new Error('no state');
+    st.time = 10;
+    emit(focused(st), 'PiratesArrived', { size: 1 });
+    host.runner.resetClock(0);
+    host.runner.pump(1);
+    const batch = out.find((m) => m.t === 'events');
+    expect(batch?.t === 'events' && batch.epoch).toBe(3);
+    expect(batch?.t === 'events' && batch.events.some((e) => e.kind === 'PiratesArrived')).toBe(
+      true,
+    );
+  });
+
   it('pays a background gap the same at any game speed (#38)', () => {
     expect(pay(4)).toBe(pay(1));
   });

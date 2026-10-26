@@ -1,7 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { newGame } from '../sim/state';
+import type { SimEvent } from '../sim/types';
 import { engine } from './engine';
 import { ACTIVE_SLOT_KEY } from './slots';
+import { TOAST_MS, VISIBLE_CAP, WAITING_CAP } from './toasts';
+
+function pirate(id: number): SimEvent & { id: number } {
+  return {
+    id,
+    kind: 'PiratesArrived',
+    carrierId: 0,
+    systemId: 0,
+    severity: 'critical',
+    t: 1,
+    count: 1,
+    data: { size: 2 },
+  };
+}
 
 describe('engine.replace', () => {
   it('clears the backup-failed flag and the notice', () => {
@@ -33,6 +48,68 @@ describe('slot writes (#40)', () => {
     engine.replace(newGame(3));
     expect(engine.toasts.shown().some((t) => t.text.includes('save slot 2'))).toBe(false);
     vi.unstubAllGlobals();
+    engine.toasts.clear();
+  });
+});
+
+describe('run epoch', () => {
+  it('drops an events message from before reset or import', () => {
+    engine.toasts.clear();
+    engine.events = [];
+    const epoch = engine.epoch;
+    engine.onSimMessage({ t: 'events', epoch, events: [pirate(41)] });
+    expect(engine.toasts.shown().some((t) => t.event?.kind === 'PiratesArrived')).toBe(true);
+    expect(engine.events.some((e) => e.id === 41)).toBe(true);
+    engine.replace(newGame(9));
+    expect(engine.epoch).toBe(epoch + 1);
+    expect(engine.toasts.shown().some((t) => t.event?.kind === 'PiratesArrived')).toBe(false);
+    expect(engine.events).toEqual([]);
+    engine.onSimMessage({ t: 'events', epoch, events: [pirate(41)] });
+    expect(engine.toasts.shown().some((t) => t.event?.kind === 'PiratesArrived')).toBe(false);
+    expect(engine.events).toEqual([]);
+    engine.onSimMessage({ t: 'events', epoch: engine.epoch, events: [pirate(42)] });
+    expect(engine.toasts.shown().some((t) => t.event?.id === 42)).toBe(true);
+    engine.toasts.clear();
+    engine.events = [];
+  });
+});
+
+describe('toast expiry clock', () => {
+  it('keeps expiring on the wall clock while the game is paused', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const wasPaused = engine.paused;
+    engine.paused = true;
+    engine.toasts.clear();
+    try {
+      engine.toasts.push({ text: 'while paused', severity: 'info', carrierId: null });
+      expect(engine.toasts.shown().map((t) => t.text)).toEqual(['while paused']);
+      vi.setSystemTime(1_000 + TOAST_MS.info);
+      expect(engine.paused).toBe(true);
+      expect(engine.toasts.shown()).toEqual([]);
+    } finally {
+      engine.paused = wasPaused;
+      engine.toasts.clear();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('critical overflow inbox', () => {
+  it('opens the log filtered to critical from the summary toast', () => {
+    engine.toasts.clear();
+    for (let i = 0; i < VISIBLE_CAP + WAITING_CAP + 1; i++) {
+      engine.toasts.push({ text: String(i), severity: 'critical', carrierId: null });
+    }
+    const summary = engine.toasts.shown().find((t) => t.action?.type === 'open-inbox');
+    expect(summary).toBeTruthy();
+    expect(engine.openToastInbox(summary?.key ?? null)).toEqual({
+      carrier: 'all',
+      severity: 'critical',
+    });
+    expect(engine.openToastInbox('missing')).toBeNull();
+    const ordinary = engine.toasts.shown().find((t) => t.action?.type !== 'open-inbox');
+    expect(engine.openToastInbox(ordinary?.key ?? null)).toBeNull();
     engine.toasts.clear();
   });
 });

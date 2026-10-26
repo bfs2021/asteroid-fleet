@@ -63,17 +63,24 @@ function write(key: string, v: string) {
   }
 }
 
-function LogPanel() {
+export function LogPanel({
+  carrier,
+  onCarrier,
+  severity,
+  onSeverity,
+}: {
+  carrier: CarrierFilter;
+  onCarrier: (carrier: CarrierFilter) => void;
+  severity: SeverityFilter;
+  onSeverity: (severity: SeverityFilter) => void;
+}) {
   const s = useGame();
   const st = s.stats;
-  const [carrier, setCarrier] = useState<CarrierFilter>('all');
-  const [severity, setSeverity] = useState<SeverityFilter>('all');
   const choices = carrierChoices(engine.state.ops, s.systems);
   const selected = activeCarrier(
     carrier,
     choices.map((c) => c.id),
   );
-  if (selected !== carrier) setCarrier(selected);
   const rows = filterEvents(mergeForInbox(s.log), selected, severity);
   return (
     <>
@@ -92,7 +99,7 @@ function LogPanel() {
             value={selected === 'all' ? 'all' : String(selected)}
             onChange={(e) => {
               const v = e.target.value;
-              setCarrier(v === 'all' ? 'all' : Number(v));
+              onCarrier(v === 'all' ? 'all' : Number(v));
             }}
           >
             <option value="all">All</option>
@@ -108,7 +115,7 @@ function LogPanel() {
           <select
             aria-label="Severity"
             value={severity}
-            onChange={(e) => setSeverity(e.target.value as SeverityFilter)}
+            onChange={(e) => onSeverity(e.target.value as SeverityFilter)}
           >
             <option value="all">All</option>
             <option value="warn+">Warn+</option>
@@ -232,10 +239,15 @@ function SaveNotice() {
   );
 }
 
-function Toasts() {
+function Toasts({
+  onOpenInbox,
+}: {
+  onOpenInbox: (dest: { carrier: 'all'; severity: 'critical' }) => void;
+}) {
   useGame();
-  // Expiry is a timestamp. The queue's single timer asks for another render when one is due;
-  // reading the clock here drops a toast on the next tick without a timer per toast.
+  // Expiry is a timestamp on the wall clock, so a toast still expires while the game is paused.
+  // The queue's single timer asks for another render when one is due; reading the clock here
+  // drops a toast on the next tick without a timer per toast.
   // The live region stays mounted so announcements are not lost on the empty-to-first transition.
   // oxlint-disable-next-line react/purity
   const items = engine.toasts.shown(Date.now());
@@ -243,13 +255,25 @@ function Toasts() {
     <div className="toasts" aria-live="polite">
       {items.map((t) => {
         const system = t.systemId != null ? engine.state.systems[t.systemId]?.name : undefined;
+        const openInbox = t.action?.type === 'open-inbox';
         return (
           <div
             key={t.key}
             className={`toast sev-${t.severity}`}
             role={t.severity === 'critical' ? 'alert' : undefined}
           >
-            <span className="toast-text">{t.text}</span>
+            <span className="toast-text">{t.event ? formatEvent(t.event) : t.text}</span>
+            {openInbox && (
+              <button
+                type="button"
+                onClick={() => {
+                  const dest = engine.openToastInbox(t.key);
+                  if (dest) onOpenInbox(dest);
+                }}
+              >
+                Open inbox
+              </button>
+            )}
             {t.carrierId !== null && (
               <button
                 type="button"
@@ -271,6 +295,8 @@ function Toasts() {
 
 export function App() {
   const [tab, setTab] = useState<Tab>(() => read('af-tab', 'fleet'));
+  const [logCarrier, setLogCarrier] = useState<CarrierFilter>('all');
+  const [logSeverity, setLogSeverity] = useState<SeverityFilter>('all');
   const [tactical, setTactical] = useState(false);
   const [autoTactical, setAutoTactical] = useState(false);
   const settings = useSettings();
@@ -283,6 +309,12 @@ export function App() {
     document.documentElement.style.setProperty('--ui-scale', String(settings.uiScale));
   }, [settings.uiScale]);
   const closeMenu = useCallback(() => setMenu(false), []);
+  const openCriticalInbox = useCallback((dest: { carrier: 'all'; severity: 'critical' }) => {
+    setTab('log');
+    setCollapsed(false);
+    setLogCarrier(dest.carrier);
+    setLogSeverity(dest.severity);
+  }, []);
 
   return (
     <div className="app">
@@ -335,7 +367,14 @@ export function App() {
                 <ResearchPanel />
               </Suspense>
             )}
-            {tab === 'log' && <LogPanel />}
+            {tab === 'log' && (
+              <LogPanel
+                carrier={logCarrier}
+                onCarrier={setLogCarrier}
+                severity={logSeverity}
+                onSeverity={setLogSeverity}
+              />
+            )}
           </div>
         )}
       </div>
@@ -352,7 +391,7 @@ export function App() {
         </span>
       </div>
       <SaveNotice />
-      <Toasts />
+      <Toasts onOpenInbox={openCriticalInbox} />
       <Offline />
       {menu && (
         <Suspense fallback={null}>

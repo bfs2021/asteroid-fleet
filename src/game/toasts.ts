@@ -9,12 +9,29 @@ export const WAITING_CAP = 10;
 /** Dismissed bus ids remembered so a merge in the same window does not reopen the toast. */
 export const DISMISSED_CAP = 32;
 
-/** Auto-dismiss delays. Critical toasts stay until the player closes them. */
+/**
+ * Auto-dismiss delays. Critical toasts stay until the player closes them.
+ * These are wall-clock milliseconds, not sim seconds: the queue is given `Date.now`
+ * by the engine, so a toast keeps expiring while the game is paused. That is
+ * intentional. A toast is UI, and pausing the fleet must not pin it on screen.
+ */
 export const TOAST_MS = {
   info: 3000,
   good: 3000,
   warn: 6000,
 } as const;
+
+/**
+ * Minimum time a toast stays up once it has a slot. A warn that waited almost
+ * its whole display time must not flash for a fraction of a second when promoted.
+ */
+export const MIN_ON_SCREEN_MS = 1_500;
+
+/** The overflow summary asks the UI to open the Log tab on this filter. */
+export interface OpenInboxAction {
+  type: 'open-inbox';
+  severity: 'critical';
+}
 
 /**
  * Per-kind toast policy. Per-carrier alert rules (#79) can override this table later:
@@ -71,19 +88,34 @@ export interface Toast {
   key: string;
   /** Bus id, so a later merge updates this toast instead of stacking another. */
   eventId: number | null;
+  /**
+   * The sim event, when this toast came from the bus. The UI formats it.
+   * Null for engine errors and for the critical-overflow summary, which use `text`.
+   */
+  event: (SimEvent & { id?: number }) | null;
   text: string;
   severity: Severity;
   /** Set for carrier-scoped events. Engine errors leave it null, so they have no Go to. */
   carrierId: number | null;
   /** System the event happened in, used to name the Go to button. Null for engine errors. */
   systemId: number | null;
-  /** Wall-clock ms when it arrived, or when a merge restarted the timer while it was visible. */
-  shownAt: number;
+  /** Wall-clock ms when it joined the queue. A merge into a waiter refreshes this. */
+  arrivedAt: number;
+  /**
+   * Wall-clock ms when it last took a visible slot. Null while it is waiting.
+   * Expiry is the later of `shownAt + MIN_ON_SCREEN_MS` and `arrivedAt` plus the
+   * display time, so a promoted toast is readable and a fresh one still lasts
+   * its full display time.
+   */
+  shownAt: number | null;
+  /** Set on the sticky summary of critical toasts that did not fit in the queue. */
+  action?: OpenInboxAction;
 }
 
 export interface ToastInput {
   eventId?: number | null;
-  text: string;
+  event?: (SimEvent & { id?: number }) | null;
+  text?: string;
   severity: Severity;
   carrierId: number | null;
   systemId?: number | null;
@@ -98,6 +130,13 @@ export interface ToastInput {
 export class ToastQueue {
   private visible: Toast[] = [];
   private pending: Toast[] = [];
+  /**
+   * Critical toasts that did not fit in the waiting cap, collapsed into one sticky
+   * summary. It does not take a visible or waiting slot: the newest criticals stay
+   * queued, and this row only counts the ones that were dropped.
+   */
+  private overflow: Toast | null = null;
+  private overflowCount = 0;
   /** Bus ids the player closed, oldest first. A later merge stays hidden unless it is more severe. */
   private dismissed: { id: number; severity: Severity }[] = [];
   private seq = 1;
@@ -129,10 +168,14 @@ export class ToastQueue {
     if (input.eventId != null) {
       const existing = this.findEvent(input.eventId);
       if (existing) {
-        existing.text = input.text;
+        if (input.text !== undefined) existing.text = input.text;
+        if (input.event !== undefined) existing.event = input.event;
         existing.severity = input.severity;
         existing.carrierId = input.carrierId;
         if (input.systemId !== undefined) existing.systemId = input.systemId;
+        // A merge into a waiter refreshes its arrival so it is not dropped as stale.
+        // A merge into a visible toast restarts the on-screen timer.
+        existing.arrivedAt = now;
         if (this.visible.includes(existing)) {
           existing.shownAt = now;
           this.schedule(now);
@@ -146,11 +189,13 @@ export class ToastQueue {
     const toast: Toast = {
       key: input.eventId != null ? `e${input.eventId}` : `m${this.seq++}`,
       eventId: input.eventId ?? null,
-      text: input.text,
+      event: input.event ?? null,
+      text: input.text ?? '',
       severity: input.severity,
       carrierId: input.carrierId,
       systemId: input.systemId ?? null,
-      shownAt: now,
+      arrivedAt: now,
+      shownAt: null,
     };
     // Newest on top. A full row keeps critical toasts and waits the oldest lesser one.
     this.visible.unshift(toast);
@@ -164,9 +209,14 @@ export class ToastQueue {
       }
       const idx = demote >= 0 ? demote : this.visible.length - 1;
       const oldest = this.visible.splice(idx, 1)[0];
-      if (oldest) this.pending.unshift(oldest);
+      if (oldest) {
+        // Back in the queue: the next time it is shown, the minimum starts again.
+        oldest.shownAt = null;
+        this.pending.unshift(oldest);
+      }
     }
     this.prunePending(now);
+    for (const t of this.visible) if (t.shownAt == null) t.shownAt = now;
     this.schedule(now);
     return toast.key;
   }
@@ -193,17 +243,30 @@ export class ToastQueue {
     return toast.carrierId;
   }
 
-  /** Visible toasts after applying expiry at `now`, newest first. */
+  /**
+   * Where the summary toast sends the player, or null when `key` is not that toast.
+   * Opening the inbox does not dismiss it; the player closes it with the usual button.
+   */
+  inboxAction(key: string | null): OpenInboxAction | null {
+    if (key == null || this.overflow?.key !== key) return null;
+    return this.overflow.action ?? null;
+  }
+
+  /** Visible toasts after applying expiry at `now`, newest first. The overflow summary is last. */
   shown(now = this.now()): readonly Toast[] {
-    this.visible = this.visible.filter((t) => !expired(t, now));
+    this.visible = this.visible.filter((t) => !visibleExpired(t, now));
     this.fill(now);
     this.schedule(now);
-    return this.visible.slice();
+    const rows = this.visible.slice();
+    if (this.overflow) rows.push(this.overflow);
+    return rows;
   }
 
   clear() {
     this.visible = [];
     this.pending = [];
+    this.overflow = null;
+    this.overflowCount = 0;
     this.dismissed = [];
     this.clearTimer();
     this.deadline = null;
@@ -218,6 +281,12 @@ export class ToastQueue {
   }
 
   private take(key: string): Toast | null {
+    if (this.overflow?.key === key) {
+      const toast = this.overflow;
+      this.overflow = null;
+      this.overflowCount = 0;
+      return toast;
+    }
     const vis = this.visible.findIndex((t) => t.key === key);
     let toast: Toast | undefined;
     if (vis >= 0) toast = this.visible.splice(vis, 1)[0];
@@ -242,14 +311,19 @@ export class ToastQueue {
     while (this.visible.length < VISIBLE_CAP && this.pending.length > 0) {
       const next = this.pending.shift();
       if (!next) break;
-      if (expired(next, now)) continue;
+      if (waiterStale(next, now)) continue;
+      next.shownAt = now;
       this.visible.push(next);
     }
   }
 
-  /** Drop stale waiters, then the oldest non-critical ones, until the queue fits. */
+  /**
+   * Drop stale non-critical waiters, then the oldest non-critical ones, until the
+   * queue fits. A critical that does not fit is counted on the sticky summary
+   * instead of disappearing.
+   */
   private prunePending(now: number) {
-    this.pending = this.pending.filter((t) => !expired(t, now));
+    this.pending = this.pending.filter((t) => !waiterStale(t, now));
     while (this.pending.length > WAITING_CAP) {
       let drop = this.pending.length - 1;
       for (let i = this.pending.length - 1; i >= 0; i--) {
@@ -258,16 +332,36 @@ export class ToastQueue {
           break;
         }
       }
-      this.pending.splice(drop, 1);
+      const removed = this.pending.splice(drop, 1)[0];
+      if (removed?.severity === 'critical') this.noteCriticalOverflow(now);
     }
+  }
+
+  private noteCriticalOverflow(now: number) {
+    this.overflowCount += 1;
+    if (!this.overflow) {
+      this.overflow = {
+        key: 'critical-overflow',
+        eventId: null,
+        event: null,
+        text: '',
+        severity: 'critical',
+        carrierId: null,
+        systemId: null,
+        arrivedAt: now,
+        shownAt: now,
+        action: { type: 'open-inbox', severity: 'critical' },
+      };
+    }
+    this.overflow.text = criticalOverflowText(this.overflowCount);
   }
 
   /** One timer for the soonest auto-dismiss. Cleared and replaced when that moment changes. */
   private schedule(now: number) {
     let next: number | null = null;
     for (const t of this.visible) {
-      if (t.severity === 'critical') continue;
-      const at = t.shownAt + TOAST_MS[t.severity];
+      const at = visibleDeadline(t);
+      if (at === null) continue;
       if (next === null || at < next) next = at;
     }
     if (next === this.deadline) return;
@@ -291,9 +385,26 @@ export class ToastQueue {
   }
 }
 
-function expired(t: Toast, now: number): boolean {
+/** A waiter whose display time ran out before it was shown. Criticals wait until dismissed. */
+function waiterStale(t: Toast, now: number): boolean {
   if (t.severity === 'critical') return false;
-  return now - t.shownAt >= TOAST_MS[t.severity];
+  return now >= t.arrivedAt + TOAST_MS[t.severity];
+}
+
+/** When a visible non-critical toast comes down. Null for criticals and for waiters. */
+function visibleDeadline(t: Toast): number | null {
+  if (t.severity === 'critical' || t.shownAt == null) return null;
+  return Math.max(t.shownAt + MIN_ON_SCREEN_MS, t.arrivedAt + TOAST_MS[t.severity]);
+}
+
+function visibleExpired(t: Toast, now: number): boolean {
+  const at = visibleDeadline(t);
+  return at !== null && now >= at;
+}
+
+function criticalOverflowText(n: number): string {
+  const noun = n === 1 ? 'event' : 'events';
+  return `${n} more critical ${noun}, open inbox`;
 }
 
 /**
@@ -304,7 +415,6 @@ export function offerToasts(
   queue: ToastQueue,
   events: readonly (SimEvent & { id: number })[],
   focusedCarrierId: number,
-  text: (ev: SimEvent) => string,
 ): boolean {
   const ordered = events
     .slice()
@@ -316,7 +426,7 @@ export function offerToasts(
     if (!wantsToast(ev, focusedCarrierId) && !queue.has(ev.id)) continue;
     const key = queue.push({
       eventId: ev.id,
-      text: text(ev),
+      event: ev,
       severity: ev.severity,
       carrierId: ev.carrierId,
       systemId: ev.systemId,

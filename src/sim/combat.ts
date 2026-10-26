@@ -1,6 +1,13 @@
 // Combat: fighters, scouts, repair drones, pirate waves and pirate AI.
 
-import { CARRIER_SENSOR, PIRATE_BASE, SHIP_STATS, WAVE_INTERVAL, WAVE_WARNING } from './config';
+import {
+  CARRIER_SENSOR,
+  GAS_PIRATE_HARVESTER_BIAS,
+  PIRATE_BASE,
+  SHIP_STATS,
+  WAVE_INTERVAL,
+  WAVE_WARNING,
+} from './config';
 import {
   CARRIER,
   cargoCap,
@@ -222,23 +229,36 @@ export function threats(s: GameState, dt: number) {
     log(s, 'Pirates have arrived!', 'bad');
     w.timer = WAVE_INTERVAL(sys.tier) * randRange(s, 0.8, 1.2);
   }
-  // Solar storms in the frontier and beyond.
+  // Solar storms in the frontier and beyond; H2 storms at gas giants.
   const st = s.storm;
   if (st.active > 0) {
     st.active -= dt;
-    if (st.active <= 0) log(s, 'Solar storm passed.', 'info');
+    if (st.active <= 0)
+      log(s, s.systems[s.systemId].gasGiant ? 'H2 storm passed.' : 'Solar storm passed.', 'info');
   } else {
     st.timer -= dt;
     if (st.timer <= 0) {
       st.active = 20;
       st.timer = randRange(s, 120, 220);
-      log(s, 'Solar storm: ships outside take damage, solar output up.', 'warn');
+      if (s.systems[s.systemId].gasGiant)
+        log(s, 'H2 storm: ships near the gas giant take damage, harvest yield up.', 'warn');
+      else log(s, 'Solar storm: ships outside take damage, solar output up.', 'warn');
     }
   }
 }
 
-function pirateTargetScore(s: GameState, sh: Ship): number {
+/** Gas giant pirates hunt harvesters: H2 is easy to fence. */
+function gasGiantTargetBias(s: GameState, sh: Ship): number {
+  if (sh.cls !== 'harvester' || !s.systems[s.systemId].gasGiant) return 1;
+  return GAS_PIRATE_HARVESTER_BIAS;
+}
+
+export function pirateTargetScore(s: GameState, sh: Ship): number {
   if (sh.mode === 'docked') return 0;
+  return baseTargetScore(s, sh) * gasGiantTargetBias(s, sh);
+}
+
+function baseTargetScore(s: GameState, sh: Ship): number {
   if (sh.cls === 'barge') return 4 + (sh.cargo / cargoCap(s, 'barge')) * 6; // full barges first
   if (sh.cls === 'hauler' || sh.cls === 'harvester') return 2 + sh.cargo / 60;
   if (sh.cls === 'fighter') return 1.5;

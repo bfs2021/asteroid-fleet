@@ -1,6 +1,6 @@
 // Mining and logistics: drones, barges, haulers and gas harvesters.
 
-import { DOCK_RADIUS } from './config';
+import { DOCK_RADIUS, H2_STORM_YIELD } from './config';
 import {
   CARRIER,
   cargoCap,
@@ -16,7 +16,7 @@ import {
 } from './ctx';
 import { rule } from './doctrine';
 import { dist, dist2, moveToward, rand } from './math';
-import { clusterCenters, gasGiantPos, log } from './state';
+import { clusterCenters, gasGiantPos, h2Storm, log } from './state';
 import type { Asteroid, GameState, Ship, Vec3 } from './types';
 
 /**
@@ -264,6 +264,14 @@ export function harvester(s: GameState, ship: Ship, dt: number) {
     return;
   }
   const cap = cargoCap(s, 'harvester');
+  const storm = h2Storm(s);
+  if (storm && rule(s, 'harvesterStormShelter')) {
+    if (ship.h2 > 0) ship.mode = 'toCarrier';
+    else {
+      goHome(s, ship, dt);
+      return;
+    }
+  }
   if (ship.h2 >= cap || ship.mode === 'toCarrier') {
     ship.mode = 'toCarrier';
     if (moveToward(ship.pos, s.carrier.pos, v, DOCK_RADIUS)) {
@@ -275,6 +283,6 @@ export function harvester(s: GameState, ship: Ship, dt: number) {
   const g = gasGiantPos(sys);
   if (moveToward(ship.pos, g, v, 30)) {
     ship.mode = 'station';
-    ship.h2 = Math.min(cap, ship.h2 + 1.2 * dt);
+    ship.h2 = Math.min(cap, ship.h2 + 1.2 * (storm ? H2_STORM_YIELD : 1) * dt);
   } else ship.mode = 'toAsteroid';
 }

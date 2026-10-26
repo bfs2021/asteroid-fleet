@@ -2,6 +2,7 @@ import {
   SOLAR_RATE,
   HANGAR_SLOT_COST,
   HANGAR_TYPES,
+  hangarLocked,
   MAX_REFINERY,
   REFINERY_COST,
   MAX_HANGAR_SLOTS,
@@ -90,8 +91,10 @@ export function apply(s: GameState, c: Command): string | null {
     case 'buyHangar': {
       const cost = NEW_HANGAR_COST(s.hangars.length);
       if (s.hangars.length >= 5) return 'The carrier has no room for more hangars';
-      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2)
-        return 'Dry docks unlock in the frontier';
+      {
+        const locked = hangarLocked(c.hangarType, s.stats.furthestTier);
+        if (locked) return locked;
+      }
       if (s.credits < cost) return 'Not enough credits';
       s.credits -= cost;
       const id = Math.max(...s.hangars.map((h) => h.id)) + 1;
@@ -111,8 +114,10 @@ export function apply(s: GameState, c: Command): string | null {
     case 'retrofitHangar': {
       const h = s.hangars.find((x) => x.id === c.hangarId);
       if (!h || h.type === c.hangarType) return null;
-      if (c.hangarType === 'drydock' && s.stats.furthestTier < 2)
-        return 'Dry docks unlock in the frontier';
+      {
+        const locked = hangarLocked(c.hangarType, s.stats.furthestTier);
+        if (locked) return locked;
+      }
       if (s.credits < RETROFIT_COST) return 'Not enough credits';
       s.credits -= RETROFIT_COST;
       h.type = c.hangarType;

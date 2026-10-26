@@ -28,7 +28,7 @@ export interface Doctrine {
   byClass: Partial<Record<ShipClass, Partial<Stance>>>;
 }
 
-export type HangarType = 'launch' | 'drydock' | 'cargo';
+export type HangarType = 'launch' | 'drydock' | 'cargo' | 'fabricator';
 
 export interface HangarItem {
   shipId: number;
@@ -162,7 +162,8 @@ export type RuleId =
   | 'droneUnloadAtBarge'
   | 'haulerPark'
   | 'recallOnLowShields'
-  | 'reserveWarpEnergy';
+  | 'reserveWarpEnergy'
+  | 'harvesterStormShelter';
 
 export interface Rule {
   id: RuleId;

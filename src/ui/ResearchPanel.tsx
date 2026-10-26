@@ -29,11 +29,14 @@ export function ResearchPanel() {
           {nodes.map((n) => {
             const l = lvl(s, n.id);
             const maxed = l >= n.maxLevel;
-            const locked = n.requires && lvl(s, n.requires) === 0;
+            const locked = (n.requires && lvl(s, n.requires) === 0) || (n.tier && tier < n.tier);
             return (
               <div key={n.id} className={`node ${maxed ? 'maxed' : ''}`}>
                 <span className="nname">{n.name}</span>
-                <span className="ndesc">{n.desc}</span>
+                <span className="ndesc">
+                  {n.desc}
+                  {n.tier && tier < n.tier && ` · needs ${TIER_NAMES[n.tier].toLowerCase()}`}
+                </span>
                 <div className="row">
                   <div className="pips grow">
                     {Array.from({ length: n.maxLevel }, (_, i) => (

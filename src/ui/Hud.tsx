@@ -169,6 +169,8 @@ function Alerts() {
         Pirate wave inbound in {Math.ceil(s.wave.timer)} s · {s.wave.size} raiders
       </div>
     );
+  if (s.storm.active > 0 && s.systems[s.systemId].gasGiant)
+    return <div className="alert warn">H2 storm · ships near the gas giant take damage</div>;
   if (s.storm.active > 0)
     return <div className="alert warn">Solar storm · ships outside cover take damage</div>;
   return null;

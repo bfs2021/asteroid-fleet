@@ -1,4 +1,4 @@
-import { ZONE_RULE_UNLOCKS } from './config';
+import { HANGAR_TYPES, ZONE_RULE_UNLOCKS } from './config';
 import { unlockRule } from './state';
 import type { GameState, ShipClass } from './types';
 
@@ -19,6 +19,8 @@ export interface ResearchNode {
   maxLevel: number;
   cost: (level: number) => number; // cost of buying the next level
   requires?: string;
+  /** Furthest zone tier this run must have reached before buying a level. */
+  tier?: 2 | 3;
 }
 
 const lin = (base: number, step: number) => (lvl: number) => base + step * lvl;
@@ -222,6 +224,35 @@ export const RESEARCH: ResearchNode[] = [
     cost: () => 4,
     requires: 'autoRebuild',
   },
+  // Deep-space research: only for fleets that made it to tier 3 this run.
+  {
+    id: 'voidRefining',
+    branch: 'Carrier',
+    name: 'Void refining',
+    desc: '+25 % refinery throughput',
+    maxLevel: 3,
+    cost: lin(4, 2),
+    tier: 3,
+  },
+  {
+    id: 'stormShielding',
+    branch: 'Combat',
+    name: 'Storm shielding',
+    desc: '-30 % storm damage to ships',
+    maxLevel: 2,
+    cost: lin(3, 2),
+    tier: 3,
+  },
+  {
+    id: 'deepFabrication',
+    branch: 'Reserves',
+    name: 'Deep fabrication',
+    desc: '-15 % rebuild cooldown, stacks with Fabricator',
+    maxLevel: 2,
+    cost: lin(4, 2),
+    requires: 'reserveCd',
+    tier: 3,
+  },
   // Per-class branches feed build identity on the hangar board.
   {
     id: 'droneSwarm',
@@ -407,7 +438,9 @@ export function lvl(s: GameState, id: string): number {
 
 /** Reserve classes, their minimum count and rebuild cooldown (seconds). */
 export function reserveDefs(s: GameState): [ShipClass, number, number][] {
-  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
+  let cd = (1 - 0.2 * lvl(s, 'reserveCd')) * (1 - 0.15 * lvl(s, 'deepFabrication'));
+  // A fabrication bay speeds rebuilds; more than one doesn't stack.
+  cd *= Math.min(1, ...s.hangars.map((h) => HANGAR_TYPES[h.type].rebuildMult ?? 1));
   return [
     ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
     ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
@@ -422,6 +455,7 @@ export function canBuyResearch(s: GameState, id: string): boolean {
   const l = lvl(s, id);
   if (l >= node.maxLevel) return false;
   if (node.requires && lvl(s, node.requires) === 0) return false;
+  if (node.tier && s.stats.furthestTier < node.tier) return false;
   return s.research >= node.cost(l);
 }
 

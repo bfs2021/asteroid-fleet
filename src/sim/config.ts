@@ -130,6 +130,10 @@ export interface HangarTypeDef {
   launchInterval: number;
   repairRate: number; // hull fraction per second while docked
   storage: number; // extra carrier ore storage
+  /** Furthest zone tier needed to install it. */
+  tier: 1 | 2 | 3;
+  /** Multiplier on reserve rebuild cooldowns while at least one is installed. */
+  rebuildMult?: number;
 }
 
 export const HANGAR_TYPES: Record<HangarType, HangarTypeDef> = {
@@ -139,6 +143,7 @@ export const HANGAR_TYPES: Record<HangarType, HangarTypeDef> = {
     launchInterval: 0.35,
     repairRate: 0.04,
     storage: 0,
+    tier: 1,
   },
   drydock: {
     name: 'Dry dock',
@@ -146,6 +151,7 @@ export const HANGAR_TYPES: Record<HangarType, HangarTypeDef> = {
     launchInterval: 1.2,
     repairRate: 0.2,
     storage: 0,
+    tier: 2,
   },
   cargo: {
     name: 'Cargo bay',
@@ -153,8 +159,25 @@ export const HANGAR_TYPES: Record<HangarType, HangarTypeDef> = {
     launchInterval: 1.0,
     repairRate: 0.04,
     storage: 1500,
+    tier: 1,
+  },
+  fabricator: {
+    name: 'Fabrication bay',
+    blurb: 'Reserve rebuilds 40 % faster',
+    launchInterval: 0.8,
+    repairRate: 0.08,
+    storage: 0,
+    tier: 3,
+    rebuildMult: 0.6,
   },
 };
+
+/** Why a hangar type can't be installed yet, or null. */
+export function hangarLocked(type: HangarType, furthestTier: number): string | null {
+  const t = HANGAR_TYPES[type].tier;
+  if (furthestTier >= t) return null;
+  return `${HANGAR_TYPES[type].name}s unlock in ${t === 2 ? 'the frontier' : 'deep space'}`;
+}
 
 export const BASE_STORAGE = 2000;
 export const HANGAR_SLOT_COST = (slots: number) => Math.round(120 * Math.pow(1.45, slots - 6));
@@ -219,6 +242,12 @@ export const RULE_DEFS: Record<RuleId, RuleDef> = {
     then: 'Pause refining to keep a jump in reserve',
     defaultParam: 0,
   },
+  harvesterStormShelter: {
+    unit: 'Gas harvester',
+    when: 'H2 storm',
+    then: 'Shelter at the carrier until it passes',
+    defaultParam: 0,
+  },
 };
 
 export const STARTER_RULES: RuleId[] = ['droneUnloadAtBarge', 'bargeCallHauler', 'haulerPark'];
@@ -250,10 +279,11 @@ export const ZONE_UNLOCKS: Record<number, ShipClass[]> = {
   2: ['fighter', 'repair'],
   3: [],
 };
+/** Deep space also unlocks the fabrication bay (see HANGAR_TYPES tiers). */
 export const ZONE_RULE_UNLOCKS: Record<number, RuleId[]> = {
   1: STARTER_RULES,
   2: ['fightersEscortOnWave', 'bargeFallBack', 'recallOnLowShields', 'reserveWarpEnergy'],
-  3: [],
+  3: ['harvesterStormShelter'],
 };
 
 // ---------- Power ----------
@@ -278,6 +308,16 @@ export const warpCost = (from: number, to: number) => 250 + 150 * Math.abs(from 
 export const WAVE_INTERVAL = (tier: number) => (tier >= 3 ? 70 : 110);
 export const WAVE_WARNING = 15;
 export const PIRATE_BASE = { hull: 45, damage: 5, speed: 9 };
+
+// ---------- Gas giants ----------
+
+/** H2 storms hit ships within this distance of the gas giant, cover or not. */
+export const H2_STORM_RADIUS = 45;
+export const H2_STORM_DPS = 3;
+/** Harvesters skim this much faster while an H2 storm churns the clouds. */
+export const H2_STORM_YIELD = 2;
+/** Pirates in gas giant systems weigh harvesters this much more. */
+export const GAS_PIRATE_HARVESTER_BIAS = 3;
 
 // ---------- Prestige ----------
 

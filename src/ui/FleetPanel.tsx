@@ -5,6 +5,7 @@ import { RETROFIT_COST, shipCost } from '../sim/actions';
 import {
   HANGAR_SLOT_COST,
   HANGAR_TYPES,
+  hangarLocked,
   MAX_HANGAR_SLOTS,
   NEW_HANGAR_COST,
   SHIP_STATS,
@@ -182,7 +183,7 @@ function HangarBoard({
           title={`Retrofit for ${RETROFIT_COST} credits`}
         >
           {(Object.keys(HANGAR_TYPES) as HangarType[]).map((t) => (
-            <option key={t} value={t} disabled={t === 'drydock' && s.stats.furthestTier < 2}>
+            <option key={t} value={t} disabled={!!hangarLocked(t, s.stats.furthestTier)}>
               {HANGAR_TYPES[t].name}
             </option>
           ))}
@@ -413,10 +414,10 @@ export function FleetPanel() {
                 key={t}
                 disabled={
                   s.credits < NEW_HANGAR_COST(hangarCount) ||
-                  (t === 'drydock' && s.stats.furthestTier < 2)
+                  !!hangarLocked(t, s.stats.furthestTier)
                 }
                 onClick={() => engine.dispatch({ type: 'buyHangar', hangarType: t })}
-                title={HANGAR_TYPES[t].blurb}
+                title={hangarLocked(t, s.stats.furthestTier) ?? HANGAR_TYPES[t].blurb}
               >
                 {HANGAR_TYPES[t].name}
               </button>

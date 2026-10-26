@@ -1,5 +1,5 @@
-import { OrbitControls, Stars } from '@react-three/drei';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Stars } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
 import {
   Suspense,
   lazy,
@@ -11,7 +11,8 @@ import {
   useSyncExternalStore,
 } from 'react';
 import * as THREE from 'three';
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { CameraRig } from './CameraRig';
+import { focus, isDoubleMiss } from './focus';
 import { engine, lerpPos } from '../game/engine';
 import { COVER_RADIUS, SHIP_STATS } from '../sim/config';
 import { gasGiantPos } from '../sim/state';
@@ -70,6 +71,7 @@ export interface ViewOptions {
 function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const glow = useRef<THREE.InstancedMesh>(null);
+  const ids = useRef(new Int32Array(MAX_PER_CLASS));
   const geo = useMemo(() => shipGeometry(cls), [cls]);
   const color = cls === 'pirate' ? '#ff3b3b' : SHIP_STATS[cls].color;
   const glowColor = useMemo(
@@ -93,6 +95,7 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
         if (sh.cls !== cls || sh.mode === 'docked') continue;
       }
       if (n >= MAX_PER_CLASS) break;
+      ids.current[n] = e.id;
       lerpPos(e.id, e.pos, a, tmp);
       const h = heading(e.id, e.pos);
       dummy.position.set(tmp.x, tmp.y, tmp.z);
@@ -114,7 +117,16 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
 
   return (
     <>
-      <instancedMesh ref={mesh} args={[geo, undefined, MAX_PER_CLASS]} frustumCulled={false}>
+      <instancedMesh
+        ref={mesh}
+        args={[geo, undefined, MAX_PER_CLASS]}
+        frustumCulled={false}
+        onClick={(e) => {
+          if (cls === 'pirate' || e.instanceId === undefined) return;
+          e.stopPropagation();
+          focus.set(ids.current[e.instanceId]);
+        }}
+      >
         <meshStandardMaterial
           color={color}
           emissive={color}
@@ -124,7 +136,12 @@ function ShipLayer({ cls }: { cls: ShipClass | 'pirate' }) {
           flatShading
         />
       </instancedMesh>
-      <instancedMesh ref={glow} args={[undefined, undefined, MAX_PER_CLASS]} frustumCulled={false}>
+      <instancedMesh
+        ref={glow}
+        args={[undefined, undefined, MAX_PER_CLASS]}
+        frustumCulled={false}
+        raycast={() => null}
+      >
         <sphereGeometry args={[1, 8, 6]} />
         <meshBasicMaterial color={glowColor} toneMapped={false} />
       </instancedMesh>
@@ -521,60 +538,6 @@ function Tactical({ on }: { on: boolean }) {
   );
 }
 
-function CameraRig({
-  tactical,
-  onAutoTactical,
-}: {
-  tactical: boolean;
-  onAutoTactical: (on: boolean) => void;
-}) {
-  const controls = useRef<OrbitControlsImpl>(null);
-  const { camera } = useThree();
-  const last = useRef(new THREE.Vector3());
-  const autoOn = useRef(false);
-  const wasTactical = useRef(tactical);
-  useFrame(() => {
-    const c = controls.current;
-    if (!c) return;
-    const s = engine.state;
-    const a = engine.alpha();
-    const p = engine.prevCarrier;
-    const cur = s.carrier.pos;
-    tmpV.set(p.x + (cur.x - p.x) * a, p.y + (cur.y - p.y) * a, p.z + (cur.z - p.z) * a);
-    const delta = tmpV.clone().sub(last.current);
-    if (delta.lengthSq() < 400) {
-      c.target.add(delta);
-      camera.position.add(delta);
-    } else {
-      c.target.copy(tmpV);
-    }
-    last.current.copy(tmpV);
-    if (tactical && !wasTactical.current) {
-      camera.position.set(c.target.x, c.target.y + 230, c.target.z + 1);
-    } else if (!tactical && wasTactical.current && !autoOn.current) {
-      camera.position.set(c.target.x + 40, c.target.y + 28, c.target.z + 55);
-    }
-    wasTactical.current = tactical;
-    const d = camera.position.distanceTo(c.target);
-    const shouldAuto = d > 190;
-    if (shouldAuto !== autoOn.current) {
-      autoOn.current = shouldAuto;
-      onAutoTactical(shouldAuto);
-    }
-    c.update();
-  });
-  return (
-    <OrbitControls
-      ref={controls}
-      makeDefault
-      enableDamping
-      dampingFactor={0.08}
-      minDistance={8}
-      maxDistance={360}
-    />
-  );
-}
-
 // Memoised so the parent's 5 Hz UI re-render doesn't re-render the whole scene graph.
 export const Scene = memo(function Scene({
   tactical,
@@ -593,6 +556,7 @@ export const Scene = memo(function Scene({
       dpr={quality === 'high' ? [1, 2] : 1}
       gl={{ antialias: quality === 'high', powerPreference: 'high-performance' }}
       frameloop="always"
+      onPointerMissed={() => isDoubleMiss(performance.now()) && focus.set(null)}
     >
       <color attach="background" args={['#020308']} />
       <Sky />

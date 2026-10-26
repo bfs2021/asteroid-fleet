@@ -6,6 +6,7 @@ import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
 import { CarrierPanel } from './CarrierPanel';
 import { DoctrinePanel } from './DoctrinePanel';
+import { downloadFile } from './download';
 import { SceneBoundary } from './ErrorBoundary';
 import { FleetPanel } from './FleetPanel';
 import { Hud, fmt } from './Hud';
@@ -135,13 +136,7 @@ function Offline() {
 }
 
 function downloadText(name: string, body: string) {
-  const url = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  // Revoking in the same task can cancel the download in some browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  downloadFile(name, body, 'text/plain');
 }
 
 async function downloadBackups() {

@@ -1,4 +1,4 @@
-import { SAVE_VERSION } from '../sim/state';
+import { SAVE_VERSION, makeSystems } from '../sim/state';
 import type { GameState } from '../sim/types';
 
 export type SaveFailure = 'corrupt' | 'newer' | 'unknown';
@@ -56,6 +56,9 @@ export const migrations: Record<number, Migration> = {
       save.miningIncomeAvg = 0;
     return save;
   },
+  // v7: every asteroid now draws its rare-ore roll (#40), so fields regenerate differently
+  // and old depletion records would land on other rocks. Drop them: rocks refill anyway.
+  6: (save) => ({ ...save, fields: {} }),
 };
 
 export function applyMigrationSteps(
@@ -132,6 +135,16 @@ function validateSave(save: SaveBlob): MigrateResult {
     save.miningIncomeAvg = 0;
   if (typeof save.credits !== 'number' || !Number.isFinite(save.credits))
     return { ok: false, reason: 'corrupt' };
+
+  if (typeof save.systemId !== 'number' || !Number.isInteger(save.systemId) || save.systemId < 0)
+    return { ok: false, reason: 'corrupt' };
+  // Early saves were written with `systems: []`; rebuild the map from the seed (#40).
+  if (!isRecord(save.systems[save.systemId])) {
+    if (typeof save.seed !== 'number') return { ok: false, reason: 'corrupt' };
+    const systems = makeSystems(save.seed);
+    if (!systems[save.systemId]) return { ok: false, reason: 'corrupt' };
+    save.systems = systems;
+  }
 
   const state = save as unknown as GameState;
   // JSON turns Infinity into null; restore "no timer".

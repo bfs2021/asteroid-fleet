@@ -40,6 +40,7 @@ class Engine {
   private nextReq = 1;
   private requests = new Map<number, (s: GameState) => void>();
   private ready: (() => void) | null = null;
+  private writeFailures = new Set<string>();
 
   async init(preferWorker = true) {
     const saved = await loadGame();
@@ -236,9 +237,27 @@ class Engine {
   private write(state: GameState) {
     if (saveOverwriteBlocked()) return;
     state.savedAt = Date.now();
-    void saveGame(state);
+    void saveGame(state).then((ok) =>
+      this.reportWrite(ok, 'Autosave failed: storage is unavailable.'),
+    );
     const slot = getActiveSlot();
-    if (slot !== null) writeSlot(slot, state);
+    if (slot !== null)
+      this.reportWrite(
+        writeSlot(slot, state),
+        `Could not write save slot ${slot}: browser storage may be full. Export your save.`,
+      );
+  }
+
+  /** Toast a failed write once, not on every autosave, until a write succeeds again. */
+  private reportWrite(ok: boolean, text: string) {
+    if (ok) {
+      this.writeFailures.delete(text);
+      return;
+    }
+    if (this.writeFailures.has(text)) return;
+    this.writeFailures.add(text);
+    this.toast = { text, at: Date.now() };
+    this.emit();
   }
 
   emit() {

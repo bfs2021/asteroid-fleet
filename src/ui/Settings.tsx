@@ -19,6 +19,7 @@ import {
   type SlotInfo,
 } from '../game/slots';
 import type { GameState } from '../sim/types';
+import { downloadFile } from './download';
 
 type Tab = 'ui' | 'visuals' | 'audio' | 'saves';
 const TABS: [Tab, string][] = [
@@ -146,12 +147,7 @@ function slotStatus(info: SlotInfo): string {
 }
 
 function download(name: string, body: string) {
-  const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(name, body, 'application/json');
 }
 
 /** Replacing the live game loses it unless it is in a slot; say so, and warn about an unbacked-up save. */

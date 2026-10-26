@@ -56,8 +56,9 @@ describe('barge drone bay', () => {
     // Sent home, the barge carries the drone back and docks with it.
     barge.mode = 'retreat';
     for (let i = 0; i < 1200 && (barge.mode as string) !== 'docked'; i++) step(s);
-    step(s);
     expect(barge.mode).toBe('docked');
+    // The drone notices on its next update, which can be a tick or two later.
+    for (let i = 0; i < 5 && bayDrone.mode === 'carried'; i++) step(s);
     expect(bayDrone.mode).toBe('docked');
     expect(bayDrone.bargeId).toBe(-1);
   });

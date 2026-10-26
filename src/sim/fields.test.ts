@@ -14,7 +14,19 @@ const warp = (s: GameState, to: number) => {
 
 const ores = (s: GameState) => s.asteroids.map((a) => a.ore);
 
+/** Rock positions and sizes of system 1 at a given rare-ore research level. */
+const layout = (rare: number) => {
+  const s = newGame(5);
+  s.researchLevels.rare = rare;
+  enterSystem(s, 1);
+  return s.asteroids.map((a) => [a.pos.x, a.pos.z, a.maxOre]);
+};
+
 describe('persistent fields', () => {
+  it('lays out the same rocks whether or not rare ore is researched (#40)', () => {
+    expect(layout(3)).toEqual(layout(0));
+  });
+
   it('keeps ore levels across a warp out and back, plus refill for the time away', () => {
     const s = newGame(5);
     const fresh = ores(s);

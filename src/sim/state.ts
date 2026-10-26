@@ -95,12 +95,19 @@ export function spawnAsteroid(
   const far = Math.sqrt(center.x * center.x + center.z * center.z);
   const ore = pickOre(r, sys.tier);
   const maxOre = Math.round(80 + r() * 220);
+  const rare = lvl(s, 'rare') > 0 && r() < 0.04 * lvl(s, 'rare') ? 2.5 : 1;
   return {
     id: s.nextId++,
     pos,
     ore: maxOre,
     maxOre,
-    value: ore.value * sys.oreMult * (1 + far / 140) * (1 + 0.1 * lvl(s, 'rich')) * (1 + richBonus),
+    value:
+      ore.value *
+      sys.oreMult *
+      (1 + far / 140) *
+      (1 + 0.1 * lvl(s, 'rich')) *
+      (1 + richBonus) *
+      rare,
     radius: 0.8 + (maxOre / 300) * 1.6,
     respawn: 0,
   };
@@ -163,6 +170,10 @@ export function unlockRule(s: GameState, id: RuleId) {
 export function maxHull(s: GameState, cls: ShipClass): number {
   let h = SHIP_STATS[cls].hull * (1 + 0.15 * lvl(s, 'armor'));
   if (cls === 'barge' && lvl(s, 'bargeBay') > 0) h *= 1.5;
+  if (cls === 'drone') h *= 1 + 0.3 * lvl(s, 'droneHull');
+  if (cls === 'hauler') h *= 1 + 0.4 * lvl(s, 'haulerHull');
+  if (cls === 'fighter') h *= 1 + 0.25 * lvl(s, 'fighterHull');
+  if (cls === 'harvester') h *= 1 + 0.3 * lvl(s, 'harvestHull');
   return h;
 }
 

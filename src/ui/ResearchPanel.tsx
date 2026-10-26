@@ -19,7 +19,12 @@ export function ResearchPanel() {
     const label = SHIP_CLASSES.includes(b as ShipClass) ? SHIP_STATS[b as ShipClass].name : b;
     return (
       <div className="branch" key={b}>
-        <h3>{label}</h3>
+        <h3>
+          {label}{' '}
+          <span className="hint">
+            {nodes.filter((n) => lvl(s, n.id) >= n.maxLevel).length}/{nodes.length} maxed
+          </span>
+        </h3>
         <div className="nodes">
           {nodes.map((n) => {
             const l = lvl(s, n.id);

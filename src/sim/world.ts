@@ -16,9 +16,9 @@ import { SHIELD_HP, damageShip, inHazard, type Ctx } from './ctx';
 import { rule } from './doctrine';
 import { oreNear } from './mining';
 import { dist, dist2, moveToward, rand } from './math';
-import { lvl } from './research';
+import { lvl, reserveDefs } from './research';
 import { clusterCenters, createShip, log, maxEnergy, spawnAsteroid } from './state';
-import type { GameState, ShipClass, Vec3 } from './types';
+import type { GameState, Vec3 } from './types';
 
 export function power(s: GameState, dt: number) {
   const c = s.carrier;
@@ -96,18 +96,20 @@ export function field(s: GameState, dt: number) {
       }
       centers ??= clusterCenters(sys);
       const c = centers[Math.floor(rand(s) * centers.length)];
-      const fresh = spawnAsteroid(s, () => rand(s), c, sys, Math.min(0.3, scouts * 0.06));
+      const fresh = spawnAsteroid(
+        s,
+        () => rand(s),
+        c,
+        sys,
+        Math.min(0.3, scouts * 0.06 * (1 + 0.5 * lvl(s, 'scoutSurvey'))),
+      );
       s.asteroids[i] = fresh;
     }
   }
 }
 
 export function reserves(s: GameState, dt: number, ctx: Ctx) {
-  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
-  const defs: [ShipClass, number, number][] = [
-    ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
-    ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
-  ];
+  const defs = reserveDefs(s);
   for (const [cls, min, cooldown] of defs) {
     if (min <= 0 || !s.unlocked.includes(cls)) continue;
     const n = ctx.byClass[cls].length;
@@ -147,6 +149,6 @@ export function drift(s: GameState, dt: number) {
   }
   if (c.stance === 'hold') c.target = null;
   if (c.target && c.energy > maxEnergy(s) * 0.1) {
-    if (!moveToward(c.pos, c.target, 1.2 * dt)) c.energy -= 1 * dt;
+    if (!moveToward(c.pos, c.target, 1.2 * (1 + 0.2 * lvl(s, 'sublight')) * dt)) c.energy -= 1 * dt;
   }
 }

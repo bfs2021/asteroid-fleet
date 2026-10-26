@@ -14,7 +14,7 @@ import {
   warpCost,
 } from './config';
 import { moveShip as moveOnBoard } from './hangar';
-import { buyResearch as buyNode, lvl } from './research';
+import { buyResearch as buyNode, lvl, reserveDefs } from './research';
 import { createShip, log, maxEnergy, newGame } from './state';
 import { executeJump } from './tick';
 import type { CarrierStance, GameState, HangarType, RuleId, ShipClass, Stance } from './types';
@@ -239,11 +239,7 @@ export function settleOffline(s: GameState, elapsedS: number): OfflineReport | n
   s.wave.warning = false;
   if (s.systems[s.systemId].tier > 1) s.wave.timer = 60;
   let rebuilt = 0;
-  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
-  const defs: [ShipClass, number, number][] = [
-    ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
-    ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
-  ];
+  const defs = reserveDefs(s);
   for (const [cls, min, cooldown] of defs) {
     const have = s.ships.filter((x) => x.cls === cls).length;
     const n = Math.min(Math.max(0, min - have), Math.floor(t / cooldown));

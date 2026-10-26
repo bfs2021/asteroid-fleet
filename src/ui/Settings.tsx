@@ -202,10 +202,11 @@ function SavesTab() {
                 Load
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!info.empty && !confirm(`Overwrite slot ${info.slot}?`)) return;
-                  engine.state.savedAt = Date.now();
-                  if (!writeSlot(info.slot, engine.state)) {
+                  const state = await engine.fullState();
+                  state.savedAt = Date.now();
+                  if (!writeSlot(info.slot, state)) {
                     setMsg({ text: 'Could not write to browser storage.', bad: true });
                     return;
                   }
@@ -236,10 +237,10 @@ function SavesTab() {
       <h3>Export / import</h3>
       <div className="row">
         <button
-          onClick={() =>
+          onClick={async () =>
             download(
               `asteroid-fleet-${new Date().toISOString().slice(0, 10)}.json`,
-              exportSaveFile(engine.state),
+              exportSaveFile(await engine.fullState()),
             )
           }
         >
@@ -247,8 +248,8 @@ function SavesTab() {
         </button>
         <button
           className={mode === 'export' ? 'on' : ''}
-          onClick={() => {
-            setText(exportSave(engine.state));
+          onClick={async () => {
+            setText(exportSave(await engine.fullState()));
             setMode('export');
           }}
         >

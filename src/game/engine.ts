@@ -1,26 +1,25 @@
 import { useSyncExternalStore } from 'react';
-import { apply, prestige, settleOffline, type Command, type OfflineReport } from '../sim/actions';
-import { DT } from '../sim/config';
+import type { Command, OfflineReport } from '../sim/actions';
 import { newGame } from '../sim/state';
-import { step } from '../sim/tick';
-import type { GameState, Vec3 } from '../sim/types';
+import type { GameState, Pirate, Ship, Vec3 } from '../sim/types';
+import { createSimHost, type SimHost } from './host';
+import { MODES, type Frame, type OutMsg } from './protocol';
+import { PUMP_MS } from './runner';
 import { allowSaveOverwrite, loadGame, saveGame, saveOverwriteBlocked } from './save';
 import { getActiveSlot, writeSlot } from './slots';
 
-const TICK_MS = DT * 1000;
-const MAX_CATCHUP_TICKS = 600; // a minute of sim; longer gaps go through offline settlement
-const UI_HZ = 5;
+const AUTOSAVE_MS = 15000;
 
 /**
- * Owns the game state and runs the fixed-tick simulation outside React.
- * The renderer reads positions every frame and interpolates between the last two ticks;
- * the HTML UI re-renders a few times per second via `useGame`.
+ * Main-thread side of the game. The sim runs in a worker (see `runner.ts`); this class
+ * keeps a mirror of its state for React and the renderer. The full state arrives a few
+ * times per second; positions, modes and effects arrive after every sim pump as typed arrays.
+ * The renderer interpolates between the last two pumps.
  */
 class Engine {
   state: GameState = newGame();
   prev = new Map<number, Vec3>();
   prevCarrier: Vec3 = { x: 0, y: 0, z: 0 };
-  lastTickAt = performance.now();
   speed = 1;
   paused = false;
   offline: OfflineReport | null = null;
@@ -31,38 +30,82 @@ class Engine {
   saveBackupFailed = false;
   loaded = false;
 
+  private host: SimHost | null = null;
   private version = 0;
   private listeners = new Set<() => void>();
-  private acc = 0;
-  private lastFrame = performance.now();
-  private lastUi = 0;
-  private lastSave = performance.now();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private ships = new Map<number, Ship>();
+  private pirates = new Map<number, Pirate>();
+  private lastFrameAt = performance.now();
+  private frameGap = PUMP_MS;
+  private nextReq = 1;
+  private requests = new Map<number, (s: GameState) => void>();
+  private ready: (() => void) | null = null;
 
-  async init() {
+  async init(preferWorker = true) {
     const saved = await loadGame();
+    let state = newGame();
+    let settle = false;
     if (saved.ok) {
-      this.state = saved.state;
-      const report = settleOffline(this.state, (Date.now() - saved.state.savedAt) / 1000);
-      if (report) this.offline = report;
+      state = saved.state;
+      settle = true;
     } else if (saved.reason !== 'empty') {
       this.saveNotice = saved.notice;
       this.saveBackupFailed = !saved.backedUp;
     }
+    this.host = createSimHost((msg) => this.receive(msg), preferWorker);
+    const first = new Promise<void>((r) => (this.ready = r));
+    this.host.post({ t: 'init', state, now: Date.now(), settle });
+    await first;
     this.loaded = true;
-    this.snapshot();
-    this.start();
+    setInterval(() => this.save(), AUTOSAVE_MS);
+    // The page may be frozen or gone before the worker could answer, so these write the mirror.
     window.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') this.save();
+      if (document.visibilityState === 'hidden') this.saveMirror();
     });
-    window.addEventListener('beforeunload', () => this.save());
+    window.addEventListener('beforeunload', () => this.saveMirror());
     this.emit();
   }
 
-  start() {
-    if (this.timer) return;
-    this.lastFrame = performance.now();
-    this.timer = setInterval(() => this.pump(), 25);
+  get simKind(): SimHost['kind'] | null {
+    return this.host?.kind ?? null;
+  }
+
+  private receive(msg: OutMsg) {
+    switch (msg.t) {
+      case 'state':
+        this.adopt(msg.state);
+        if (msg.offline) this.offline = msg.offline;
+        if (this.ready) {
+          this.ready();
+          this.ready = null;
+        }
+        this.emit();
+        return;
+      case 'frame':
+        this.applyFrame(msg);
+        return;
+      case 'error':
+        this.toast = { text: msg.text, at: Date.now() };
+        this.emit();
+        return;
+      case 'snapshot': {
+        const done = this.requests.get(msg.id);
+        this.requests.delete(msg.id);
+        done?.(msg.state);
+        return;
+      }
+    }
+  }
+
+  /** A full state replaces the mirror. Positions keep coming from frames in between. */
+  private adopt(state: GameState) {
+    const first = this.ships.size === 0 && this.pirates.size === 0;
+    this.state = state;
+    this.ships.clear();
+    this.pirates.clear();
+    for (const sh of state.ships) this.ships.set(sh.id, sh);
+    for (const p of state.pirates) this.pirates.set(p.id, p);
+    if (first) this.snapshot();
   }
 
   private snapshot() {
@@ -72,63 +115,89 @@ class Engine {
     this.prevCarrier = { ...this.state.carrier.pos };
   }
 
-  private pump() {
-    const now = performance.now();
-    const elapsed = now - this.lastFrame;
-    this.lastFrame = now;
-    if (!this.paused) this.acc += elapsed * this.speed;
-    let ticks = 0;
-    if (this.acc > MAX_CATCHUP_TICKS * TICK_MS) {
-      // Long background-tab gap: settle it like offline time.
-      const report = settleOffline(this.state, this.acc / 1000);
-      if (report) this.offline = report;
-      this.acc = 0;
-    }
-    while (this.acc >= TICK_MS && ticks < MAX_CATCHUP_TICKS) {
-      this.snapshot();
-      step(this.state);
-      this.acc -= TICK_MS;
-      ticks++;
-      this.lastTickAt = now - this.acc / this.speed;
-    }
-    if (now - this.lastUi > 1000 / UI_HZ) {
-      this.lastUi = now;
-      this.emit();
-    }
-    if (now - this.lastSave > 15000) {
-      this.lastSave = now;
-      this.save();
-    }
+  private keepPrev(id: number, pos: Vec3) {
+    const p = this.prev.get(id);
+    if (p) {
+      p.x = pos.x;
+      p.y = pos.y;
+      p.z = pos.z;
+    } else this.prev.set(id, { ...pos });
   }
 
-  /** 0..1 progress between the previous and current tick, for interpolation. */
+  private applyFrame(f: Frame) {
+    const s = this.state;
+    const ships: Ship[] = [];
+    const pirates: Pirate[] = [];
+    const n = f.ids.length;
+    for (let i = 0; i < n; i++) {
+      const id = f.ids[i];
+      const e = i < f.nShips ? this.ships.get(id) : this.pirates.get(id);
+      // Not in the mirror yet: it shows up with the next full state.
+      if (!e) continue;
+      this.keepPrev(id, e.pos);
+      e.pos.x = f.pos[i * 3];
+      e.pos.y = f.pos[i * 3 + 1];
+      e.pos.z = f.pos[i * 3 + 2];
+      e.targetId = f.targets[i];
+      if (i < f.nShips) {
+        const sh = e as Ship;
+        sh.mode = MODES[f.modes[i]];
+        ships.push(sh);
+      } else pirates.push(e as Pirate);
+    }
+    if (this.prev.size > 4 * n + 64) {
+      const live = new Set(f.ids);
+      for (const id of this.prev.keys()) if (!live.has(id)) this.prev.delete(id);
+    }
+    s.ships = ships;
+    s.pirates = pirates;
+    this.prevCarrier = { ...s.carrier.pos };
+    s.carrier = f.carrier;
+    s.warp = f.warp;
+    s.fx = f.fx;
+    const now = performance.now();
+    const gap = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    if (gap < 200) this.frameGap += (gap - this.frameGap) * 0.2;
+  }
+
+  /** 0..1 progress between the previous and current frame, for interpolation. */
   alpha(): number {
     if (this.paused) return 1;
-    const a = ((performance.now() - this.lastTickAt) * this.speed) / TICK_MS;
+    const a = (performance.now() - this.lastFrameAt) / Math.max(1, this.frameGap);
     return a < 0 ? 0 : a > 1 ? 1 : a;
   }
 
-  dispatch(cmd: Command): boolean {
-    const err = apply(this.state, cmd);
-    if (err) this.toast = { text: err, at: Date.now() };
-    this.emit();
-    return !err;
+  /** Errors come back from the sim as a toast. */
+  dispatch(cmd: Command) {
+    this.host?.post({ t: 'cmd', cmd });
+  }
+
+  /** The sim's current state, exact (unlike the mirror, which is up to one UI tick behind). */
+  fullState(): Promise<GameState> {
+    const host = this.host;
+    if (!host) return Promise.resolve(this.state);
+    const id = this.nextReq++;
+    return new Promise((resolve) => {
+      this.requests.set(id, resolve);
+      host.post({ t: 'snapshot', id });
+    });
   }
 
   doPrestige() {
-    this.state = prestige(this.state);
-    this.snapshot();
-    this.save();
-    this.emit();
+    this.host?.post({ t: 'prestige' });
+    void this.save();
   }
 
   replace(state: GameState) {
-    this.state = state;
     this.saveNotice = null;
     this.saveBackupFailed = false;
     allowSaveOverwrite();
+    this.state = state;
+    this.adopt(state);
     this.snapshot();
-    this.save();
+    this.host?.post({ t: 'replace', state });
+    this.write(state);
     this.emit();
   }
 
@@ -138,11 +207,13 @@ class Engine {
 
   setSpeed(v: number) {
     this.speed = v;
+    this.host?.post({ t: 'speed', v });
     this.emit();
   }
 
   togglePause() {
     this.paused = !this.paused;
+    this.host?.post({ t: 'pause', v: this.paused });
     this.emit();
   }
 
@@ -151,13 +222,23 @@ class Engine {
     this.emit();
   }
 
+  /** Saves the sim's exact state. False when autosave is blocked by an unreadable save. */
   save(): boolean {
     if (saveOverwriteBlocked()) return false;
-    this.state.savedAt = Date.now();
-    void saveGame(this.state);
-    const slot = getActiveSlot();
-    if (slot !== null) writeSlot(slot, this.state);
+    void this.fullState().then((s) => this.write(s));
     return true;
+  }
+
+  private saveMirror() {
+    if (!saveOverwriteBlocked()) this.write(this.state);
+  }
+
+  private write(state: GameState) {
+    if (saveOverwriteBlocked()) return;
+    state.savedAt = Date.now();
+    void saveGame(state);
+    const slot = getActiveSlot();
+    if (slot !== null) writeSlot(slot, state);
   }
 
   emit() {

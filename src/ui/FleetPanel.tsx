@@ -9,7 +9,6 @@ import {
   SHIP_STATS,
 } from '../sim/config';
 import { effectiveStance, stanceSource } from '../sim/doctrine';
-import { neighbours, occupancy } from '../sim/hangar';
 import { maxHull } from '../sim/state';
 import { cargoCap } from '../sim/tick';
 import {
@@ -45,8 +44,38 @@ const UNLOCK_HINT: Partial<Record<ShipClass, string>> = {
   harvester: 'Research the fusion reactor',
 };
 
-function synergy(s: GameState, h: Hangar, ship: Ship): string | null {
-  const adj = neighbours(s, h, ship.id).map((id) => s.ships.find((x) => x.id === id)?.cls);
+const indexes = new WeakMap<Ship[], Map<number, Ship>>();
+
+/** Ships by id, built once per ships array (a fleet board would otherwise be O(ships²)). */
+function shipIndex(s: GameState): Map<number, Ship> {
+  let m = indexes.get(s.ships);
+  if (!m) {
+    m = new Map(s.ships.map((sh) => [sh.id, sh]));
+    indexes.set(s.ships, m);
+  }
+  return m;
+}
+
+/** Same as `occupancy` in sim/hangar, with an id lookup instead of a scan per item. */
+function boardOccupancy(byId: Map<number, Ship>, h: Hangar): (number | null)[] {
+  const occ: (number | null)[] = Array.from({ length: h.slots }, () => null);
+  for (const it of h.items) {
+    const ship = byId.get(it.shipId);
+    if (!ship) continue;
+    const size = SHIP_STATS[ship.cls].slots;
+    for (let i = 0; i < size; i++) if (it.start + i < h.slots) occ[it.start + i] = it.shipId;
+  }
+  return occ;
+}
+
+function synergy(
+  byId: Map<number, Ship>,
+  occ: (number | null)[],
+  start: number,
+  ship: Ship,
+): string | null {
+  const end = start + SHIP_STATS[ship.cls].slots;
+  const adj = [occ[start - 1], occ[end]].map((id) => (id == null ? undefined : byId.get(id)?.cls));
   if ((ship.cls === 'fighter' || ship.cls === 'barge') && adj.includes('repair'))
     return 'Repair drone adjacent: repairs 3× faster when docked';
   if (ship.cls === 'repair' && (adj.includes('fighter') || adj.includes('barge')))
@@ -69,7 +98,8 @@ function HangarBoard({
 }) {
   const s = useGame();
   const [over, setOver] = useState(-1);
-  const occ = occupancy(s, h);
+  const byId = shipIndex(s);
+  const occ = boardOccupancy(byId, h);
   const cells: React.ReactNode[] = [];
   const drop = (e: React.DragEvent, start: number) => {
     e.preventDefault();
@@ -97,9 +127,9 @@ function HangarBoard({
       continue;
     }
     if (i > 0 && occ[i - 1] === id) continue;
-    const ship = s.ships.find((x) => x.id === id)!;
+    const ship = byId.get(id)!;
     const st = SHIP_STATS[ship.cls];
-    const syn = synergy(s, h, ship);
+    const syn = synergy(byId, occ, i, ship);
     cells.push(
       <div
         key={'s' + id}

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { engine, useGame } from '../game/engine';
 import { readBackups, readPrimaryText } from '../game/save';
 import { updateSettings, useSettings } from '../game/settings';
-import { Scene } from '../render/Scene';
 import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
 import { CarrierPanel } from './CarrierPanel';
@@ -10,8 +9,23 @@ import { DoctrinePanel } from './DoctrinePanel';
 import { SceneBoundary } from './ErrorBoundary';
 import { FleetPanel } from './FleetPanel';
 import { Hud, fmt } from './Hud';
-import { ResearchPanel } from './ResearchPanel';
-import { GearButton, SettingsMenu } from './Settings';
+import { GearButton } from './GearButton';
+
+// Not needed for the first frame: the scene (three.js + r3f), the research tree
+// and the settings menu load as separate chunks right after first paint.
+const Scene = lazy(() => import('../render/Scene').then((m) => ({ default: m.Scene })));
+const loadResearch = () => import('./ResearchPanel').then((m) => ({ default: m.ResearchPanel }));
+const loadSettings = () => import('./Settings').then((m) => ({ default: m.SettingsMenu }));
+const ResearchPanel = lazy(loadResearch);
+const SettingsMenu = lazy(loadSettings);
+
+// Warm the secondary chunks once the browser is idle so opening them doesn't pop in.
+const whenIdle = (fn: () => void) =>
+  typeof requestIdleCallback === 'function' ? requestIdleCallback(fn) : setTimeout(fn, 2000);
+whenIdle(() => {
+  void loadResearch();
+  void loadSettings();
+});
 
 type Tab = 'fleet' | 'doctrine' | 'carrier' | 'research' | 'log';
 const TABS: [Tab, string][] = [
@@ -198,13 +212,15 @@ export function App() {
     <div className="app">
       <div className="canvas-wrap">
         <SceneBoundary>
-          <Scene
-            tactical={tactical}
-            quality={settings.quality}
-            bloom={settings.bloom}
-            fpsCap={settings.fpsCap}
-            onAutoTactical={setAutoTactical}
-          />
+          <Suspense fallback={null}>
+            <Scene
+              tactical={tactical}
+              quality={settings.quality}
+              bloom={settings.bloom}
+              fpsCap={settings.fpsCap}
+              onAutoTactical={setAutoTactical}
+            />
+          </Suspense>
         </SceneBoundary>
       </div>
       <Hud
@@ -238,7 +254,11 @@ export function App() {
             {tab === 'fleet' && <FleetPanel />}
             {tab === 'doctrine' && <DoctrinePanel />}
             {tab === 'carrier' && <CarrierPanel />}
-            {tab === 'research' && <ResearchPanel />}
+            {tab === 'research' && (
+              <Suspense fallback={null}>
+                <ResearchPanel />
+              </Suspense>
+            )}
             {tab === 'log' && <LogPanel />}
           </div>
         )}
@@ -259,13 +279,15 @@ export function App() {
       <Toast />
       <Offline />
       {menu && (
-        <SettingsMenu
-          onClose={closeMenu}
-          onHelp={() => {
-            setMenu(false);
-            setHelp(true);
-          }}
-        />
+        <Suspense fallback={null}>
+          <SettingsMenu
+            onClose={closeMenu}
+            onHelp={() => {
+              setMenu(false);
+              setHelp(true);
+            }}
+          />
+        </Suspense>
       )}
       {help && (
         <Help

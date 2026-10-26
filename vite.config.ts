@@ -10,13 +10,13 @@ const pkg = (names: string) =>
 // shared packages first; postprocessing comes last to stay a lazy, standalone chunk.
 const VENDOR_GROUPS: [name: string, test: RegExp][] = [
   ['three', pkg('three')],
+  ['react', pkg('react|react-dom|scheduler|use-sync-external-store|zustand')],
   [
     'r3f',
     pkg(
-      '@react-three[\\\\/](?:fiber|drei)|three-stdlib|maath|camera-controls|zustand|its-fine|suspend-react|react-use-measure',
+      '@react-three[\\\\/](?:fiber|drei)|three-stdlib|maath|camera-controls|its-fine|suspend-react|react-use-measure',
     ),
   ],
-  ['react', pkg('react|react-dom|scheduler|use-sync-external-store')],
   ['postprocessing', pkg('postprocessing|@react-three[\\\\/]postprocessing|n8ao')],
 ];
 

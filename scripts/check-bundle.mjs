@@ -7,7 +7,9 @@ import { gzipSync } from 'node:zlib';
 const KB = 1024;
 const BUDGET = {
   // Everything index.html loads before the first frame (entry + modulepreloads + css).
-  initial: 375 * KB,
+  // The scene (three.js + r3f), research tree and settings menu are lazy chunks that load
+  // right after first paint (#41), so this covers just the HUD shell: ~101 kB + headroom.
+  initial: 115 * KB,
   // Any single JS chunk; three.js is the largest.
   chunk: 200 * KB,
   // All JS and CSS, lazy chunks and the sim worker included.

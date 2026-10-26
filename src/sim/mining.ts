@@ -1,6 +1,6 @@
 // Mining and logistics: drones, barges, haulers and gas harvesters.
 
-import { DOCK_RADIUS, H2_STORM_YIELD } from './config';
+import { DOCK_RADIUS, DRILL_VALUE, H2_STORM_YIELD, LASER_RATE, VEIN_BONUS } from './config';
 import {
   CARRIER,
   cargoCap,
@@ -8,6 +8,7 @@ import {
   goHome,
   inHazard,
   miningRate,
+  modCount,
   nearestPirate,
   speed,
   transfer,
@@ -148,7 +149,9 @@ function pickAsteroid(
   mining: 'greedy' | 'safe',
 ): Asteroid | null {
   const list = s.asteroids;
-  const maxV = ctx.maxValue;
+  // A revealed vein can score up to VEIN_BONUS times its value; keep the prune bound safe.
+  const maxV = ctx.maxValue * (ctx.veins.size > 0 ? VEIN_BONUS : 1);
+  const charted = s.recon.hazards;
   let best = -1;
   let bestScore = -Infinity;
   ctx.asteroidGrid.rings(
@@ -160,14 +163,18 @@ function pickAsteroid(
       const crowd = ctx.miners.get(a.id) ?? 0;
       if (crowd >= 3) return;
       const d = dist(ship.pos, a.pos);
+      const v = ctx.veins.has(a.id) ? a.value * VEIN_BONUS : a.value;
       let score: number;
       if (mining === 'safe') {
-        score = a.value / (d + 8) - crowd * 0.05;
+        score = v / (d + 8) - crowd * 0.05;
         // Cheap score check first; hazard and cover are the expensive part.
         if (score < bestScore || (score === bestScore && i > best)) return;
         if (inHazard(s, a.pos) || !covered(s, a.pos, ctx)) return;
       } else {
-        score = (a.value * a.value) / (d + 25) - crowd * 0.2;
+        score = (v * v) / (d + 25) - crowd * 0.2;
+        // Greedy drones still steer clear of hazards a scout has charted.
+        if (score < bestScore || (score === bestScore && i > best)) return;
+        if (charted.length > 0 && inChartedHazard(s, a.pos)) return;
       }
       if (score > bestScore || (score === bestScore && i < best)) {
         bestScore = score;
@@ -178,9 +185,17 @@ function pickAsteroid(
   return best < 0 ? null : list[best];
 }
 
+function inChartedHazard(s: GameState, p: Vec3): boolean {
+  for (const i of s.recon.hazards) {
+    const h = s.hazards[i];
+    if (h && dist2(h.pos, p) < h.radius * h.radius) return true;
+  }
+  return false;
+}
+
 function bestDropoff(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
   const bay = bayBarge(ship, ctx);
-  if (bay && bay.cargo < cargoCap(s, 'barge') - 1) return bay;
+  if (bay && bay.cargo < cargoCap(s, 'barge', bay) - 1) return bay;
   const r = rule(s, 'droneUnloadAtBarge');
   if (!r) return null;
   if (dist(ship.pos, s.carrier.pos) <= r.param) return null;
@@ -188,7 +203,7 @@ function bestDropoff(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
   let bd = dist(ship.pos, s.carrier.pos);
   for (const b of ctx.byClass.barge) {
     if (b.mode !== 'station') continue;
-    if (b.cargo >= cargoCap(s, 'barge') - 1) continue;
+    if (b.cargo >= cargoCap(s, 'barge', b) - 1) continue;
     const d = dist(ship.pos, b.pos);
     if (d < bd) {
       bd = d;
@@ -199,7 +214,7 @@ function bestDropoff(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
 }
 
 export function drone(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'greedy' | 'safe') {
-  const cap = cargoCap(s, 'drone');
+  const cap = cargoCap(s, 'drone', ship);
   const v = speed(s, ship) * dt;
   if (ship.mode === 'toCarrier' || ship.mode === 'toDropoff' || ship.cargo >= cap - 1e-6) {
     if (ship.mode !== 'toDropoff' && ship.mode !== 'toCarrier') {
@@ -209,13 +224,13 @@ export function drone(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'g
     }
     if (ship.mode === 'toDropoff') {
       const b = ctx.ships.get(ship.targetId);
-      if (!b || b.mode !== 'station' || b.cargo >= cargoCap(s, 'barge') - 1) {
+      if (!b || b.mode !== 'station' || b.cargo >= cargoCap(s, 'barge', b) - 1) {
         ship.mode = 'toCarrier';
         ship.targetId = CARRIER;
         return;
       }
       if (moveToward(ship.pos, b.pos, v, 2.5)) {
-        transfer(ship, b, cargoCap(s, 'barge'));
+        transfer(ship, b, cargoCap(s, 'barge', b));
         if (ship.cargo === 0) ship.mode = 'idle';
       }
       return;
@@ -249,7 +264,7 @@ export function drone(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'g
     const amt = Math.min(a.ore, miningRate(s, ctx, ship) * dt, cap - ship.cargo);
     a.ore -= amt;
     ship.cargo += amt;
-    ship.cargoValue += amt * a.value;
+    ship.cargoValue += amt * a.value * DRILL_VALUE ** modCount(ship, 'drill');
     if (a.ore <= 0) {
       a.ore = 0;
       a.respawn = 40 + rand(s) * 40;
@@ -268,7 +283,7 @@ export function oreNear(s: GameState, p: Vec3, r: number): number {
 }
 
 export function barge(s: GameState, ship: Ship, dt: number, ctx: Ctx, mining: 'greedy' | 'safe') {
-  const cap = cargoCap(s, 'barge');
+  const cap = cargoCap(s, 'barge', ship);
   const v = speed(s, ship) * dt;
   if (rule(s, 'bargeFallBack') && nearestPirate(s, ship.pos, 28)) {
     ship.mode = 'retreat';
@@ -328,13 +343,12 @@ function pickStation(s: GameState, ship: Ship, ctx: Ctx, mining: 'greedy' | 'saf
 export function haulerJob(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
   const r = rule(s, 'bargeCallHauler');
   const threshold = r ? r.param : 0.98;
-  const cap = cargoCap(s, 'barge');
   let best: Ship | null = null;
   let bf = 0;
   for (const b of ctx.byClass.barge) {
     if (b.mode !== 'station') continue;
     if (ctx.haulerClaims.has(b.id) && ship.targetId !== b.id) continue;
-    const fill = b.cargo / cap;
+    const fill = b.cargo / cargoCap(s, 'barge', b);
     if (fill >= threshold && fill > bf) {
       bf = fill;
       best = b;
@@ -344,7 +358,7 @@ export function haulerJob(s: GameState, ship: Ship, ctx: Ctx): Ship | null {
 }
 
 export function hauler(s: GameState, ship: Ship, dt: number, ctx: Ctx) {
-  const cap = cargoCap(s, 'hauler');
+  const cap = cargoCap(s, 'hauler', ship);
   const v = speed(s, ship) * dt;
   if (ship.mode === 'toCarrier') {
     if (moveToward(ship.pos, s.carrier.pos, v, DOCK_RADIUS)) {
@@ -409,7 +423,7 @@ export function harvester(s: GameState, ship: Ship, dt: number) {
     goHome(s, ship, dt);
     return;
   }
-  const cap = cargoCap(s, 'harvester');
+  const cap = cargoCap(s, 'harvester', ship);
   const storm = h2Storm(s);
   if (storm && rule(s, 'harvesterStormShelter')) {
     if (ship.h2 > 0) ship.mode = 'toCarrier';
@@ -429,6 +443,9 @@ export function harvester(s: GameState, ship: Ship, dt: number) {
   const g = gasGiantPos(sys);
   if (moveToward(ship.pos, g, v, 30)) {
     ship.mode = 'station';
-    ship.h2 = Math.min(cap, ship.h2 + 1.2 * (storm ? H2_STORM_YIELD : 1) * dt);
+    ship.h2 = Math.min(
+      cap,
+      ship.h2 + 1.2 * (storm ? H2_STORM_YIELD : 1) * LASER_RATE ** modCount(ship, 'laser') * dt,
+    );
   } else ship.mode = 'toAsteroid';
 }

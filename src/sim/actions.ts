@@ -4,6 +4,9 @@ import {
   HANGAR_TYPES,
   hangarLocked,
   MAX_REFINERY,
+  MODULE_SLOTS,
+  MODULES,
+  moduleLocked,
   REFINERY_COST,
   MAX_HANGAR_SLOTS,
   NEW_HANGAR_COST,
@@ -19,7 +22,15 @@ import { moveShip as moveOnBoard } from './hangar';
 import { buyResearch as buyNode, lvl, reserveDefs } from './research';
 import { createShip, log, maxEnergy, newGame } from './state';
 import { executeJump } from './tick';
-import type { CarrierStance, GameState, HangarType, RuleId, ShipClass, Stance } from './types';
+import type {
+  CarrierStance,
+  GameState,
+  HangarType,
+  ModuleId,
+  RuleId,
+  ShipClass,
+  Stance,
+} from './types';
 
 export type Command =
   | { type: 'buyShip'; cls: ShipClass; hangarId?: number; start?: number }
@@ -47,7 +58,8 @@ export type Command =
       patch: Partial<Pick<GameState['automation'], 'autoBuy' | 'autoRebuild' | 'creditFloor'>>;
     }
   | { type: 'setHangarTarget'; hangarId: number; cls: ShipClass; count: number }
-  | { type: 'upgradeRefinery' };
+  | { type: 'upgradeRefinery' }
+  | { type: 'fitModule'; shipId: number; slot: number; module: ModuleId | null };
 
 export const RETROFIT_COST = 800;
 
@@ -74,6 +86,26 @@ export function apply(s: GameState, c: Command): string | null {
       s.credits += Math.round(SHIP_STATS[ship.cls].cost * 0.5);
       s.ships = s.ships.filter((x) => x.id !== ship.id);
       for (const h of s.hangars) h.items = h.items.filter((it) => it.shipId !== ship.id);
+      return null;
+    }
+    case 'fitModule': {
+      const ship = s.ships.find((x) => x.id === c.shipId);
+      if (!ship) return 'No such ship';
+      if (ship.mode !== 'docked') return 'Ship must be docked';
+      if (c.slot < 0 || c.slot >= MODULE_SLOTS[ship.cls]) return 'No such module slot';
+      if (c.module === null) {
+        // Unfitting refunds nothing; the slot just frees up.
+        if (c.slot < ship.modules.length) ship.modules.splice(c.slot, 1);
+        return null;
+      }
+      if (ship.modules[c.slot] === c.module) return null;
+      const locked = moduleLocked(c.module, ship.cls, s.stats.furthestTier);
+      if (locked) return locked;
+      const cost = MODULES[c.module].cost;
+      if (s.credits < cost) return 'Not enough credits';
+      s.credits -= cost;
+      if (c.slot < ship.modules.length) ship.modules[c.slot] = c.module;
+      else ship.modules.push(c.module);
       return null;
     }
     case 'moveShip':

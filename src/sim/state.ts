@@ -25,7 +25,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 const NAMES = [
   'Kestrel',
@@ -182,6 +182,7 @@ export function enterSystem(s: GameState, id: number) {
     delete s.fields[id];
   }
   s.hazards = [];
+  s.recon = { clusters: [], veins: [], hazards: [] };
   const hz = sys.tier === 1 ? 0 : sys.tier === 2 ? 2 : 3;
   for (let i = 0; i < hz; i++) {
     const p = onSphere(r, 90, 0.2);
@@ -256,6 +257,7 @@ export function createShip(
     station: null,
     bargeId: -1,
     fireCooldown: 0,
+    modules: [],
   };
   s.ships.push(ship);
   hangar.items.push({ shipId: ship.id, start: at });
@@ -331,6 +333,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     pirates: [],
     asteroids: [],
     hazards: [],
+    recon: { clusters: [], veins: [], hazards: [] },
     systems: makeSystems(seed),
     systemId: 0,
     fields: {},

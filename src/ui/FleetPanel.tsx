@@ -7,6 +7,10 @@ import {
   HANGAR_TYPES,
   hangarLocked,
   MAX_HANGAR_SLOTS,
+  MODULE_IDS,
+  MODULE_SLOTS,
+  MODULES,
+  moduleLocked,
   NEW_HANGAR_COST,
   SHIP_STATS,
 } from '../sim/config';
@@ -19,6 +23,7 @@ import {
   type GameState,
   type Hangar,
   type HangarType,
+  type ModuleId,
   type Ship,
   type ShipClass,
 } from '../sim/types';
@@ -151,11 +156,14 @@ function HangarBoard({
         }}
         onDrop={(e) => drop(e, i)}
         onClick={() => onShip(id)}
-        title={`${st.name}${syn ? ' · ' + syn : ''}`}
+        title={`${st.name}${syn ? ' · ' + syn : ''}${ship.modules.length ? ' · ' + ship.modules.map((m) => MODULES[m].name).join(', ') : ''}`}
       >
         <span className="nm">{st.slots >= 4 ? st.name : st.short}</span>
         <span className="md">{modeLabel(ship)}</span>
         {syn && <span className="synergy">✚</span>}
+        {ship.modules.length > 0 && (
+          <span className="mods">{ship.modules.map((m) => MODULES[m].short[0]).join('')}</span>
+        )}
         <span className="hp" style={{ width: `${(ship.hull / maxHull(s, ship.cls)) * 100}%` }} />
       </div>,
     );
@@ -265,7 +273,7 @@ function ShipDetail({ id }: { id: number }) {
   if (!ship) return null;
   const st = effectiveStance(s, ship);
   const src = (k: 'engagement' | 'underFire' | 'mining') => stanceSource(s, ship, k);
-  const cap = cargoCap(s, ship.cls);
+  const cap = cargoCap(s, ship.cls, ship);
   return (
     <div className="hangar" style={{ borderColor: SHIP_STATS[ship.cls].color }}>
       <div className="hangar-head">
@@ -296,6 +304,49 @@ function ShipDetail({ id }: { id: number }) {
           : st.underFire}{' '}
         <small>({src('underFire')})</small> · {st.mining} <small>({src('mining')})</small>
       </div>
+      <ModuleSlots ship={ship} s={s} />
+    </div>
+  );
+}
+
+function ModuleSlots({ ship, s }: { ship: Ship; s: GameState }) {
+  const slots = MODULE_SLOTS[ship.cls];
+  const docked = ship.mode === 'docked';
+  return (
+    <div className="row modules">
+      <span className="blurb">Modules</span>
+      {Array.from({ length: slots }, (_, slot) => {
+        const cur = ship.modules[slot] ?? '';
+        return (
+          <select
+            key={slot}
+            aria-label={`Module slot ${slot + 1}`}
+            disabled={!docked}
+            title={docked ? (cur ? MODULES[cur].desc : 'Empty slot') : 'Dock the ship to refit'}
+            value={cur}
+            onChange={(e) =>
+              engine.dispatch({
+                type: 'fitModule',
+                shipId: ship.id,
+                slot,
+                module: (e.target.value || null) as ModuleId | null,
+              })
+            }
+          >
+            <option value="">— empty —</option>
+            {MODULE_IDS.filter((m) => MODULES[m].fits.includes(ship.cls)).map((m) => {
+              const locked = moduleLocked(m, ship.cls, s.stats.furthestTier);
+              const poor = m !== cur && s.credits < MODULES[m].cost;
+              return (
+                <option key={m} value={m} disabled={!!locked || poor}>
+                  {MODULES[m].name} · {MODULES[m].desc}
+                  {m === cur ? '' : locked ? ` (${locked})` : ` · ${MODULES[m].cost} cr`}
+                </option>
+              );
+            })}
+          </select>
+        );
+      })}
     </div>
   );
 }
@@ -391,7 +442,8 @@ export function FleetPanel() {
       <AutomationBar />
       <p className="hint">
         Hangar slots are the board. Drag ships between slots; put a repair drone next to fighters or
-        barges and they repair 3× faster when docked. Click a hangar to build into it.
+        barges and they repair 3× faster when docked. Click a hangar to build into it, click a
+        docked ship to fit modules.
       </p>
       {s.hangars.map((h) => (
         <div key={h.id}>

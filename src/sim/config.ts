@@ -1,4 +1,4 @@
-import type { HangarType, RuleId, ShipClass, Stance } from './types';
+import type { HangarType, ModuleId, RuleId, ShipClass, Stance } from './types';
 
 export const TICK_HZ = 10;
 export const DT = 1 / TICK_HZ;
@@ -329,3 +329,98 @@ export const GAS_PIRATE_HARVESTER_BIAS = 3;
 export const RP_DIVISOR = 10_000;
 export const OFFLINE_EFFICIENCY = 0.5;
 export const OFFLINE_CAP_S = 12 * 3600;
+
+// ---------- Modules ----------
+
+export interface ModuleDef {
+  name: string;
+  short: string;
+  desc: string;
+  cost: number;
+  /** Classes that can fit it. */
+  fits: ShipClass[];
+  /** Furthest zone tier needed to fit it. */
+  tier: 1 | 2;
+}
+
+export const MODULES: Record<ModuleId, ModuleDef> = {
+  laser: {
+    name: 'Mining laser',
+    short: 'Laser',
+    desc: '+30 % mining and skimming rate; fighters +20 % damage',
+    cost: 160,
+    fits: ['drone', 'harvester', 'fighter'],
+    tier: 1,
+  },
+  drill: {
+    name: 'Core drill',
+    short: 'Drill',
+    desc: 'Mined ore is worth +15 %',
+    cost: 180,
+    fits: ['drone'],
+    tier: 1,
+  },
+  tractor: {
+    name: 'Tractor beam',
+    short: 'Tractor',
+    desc: '+25 % speed',
+    cost: 120,
+    fits: ['drone', 'barge', 'hauler', 'scout', 'repair', 'harvester'],
+    tier: 1,
+  },
+  shield: {
+    name: 'Shield emitter',
+    short: 'Shield',
+    desc: '-35 % damage taken',
+    cost: 150,
+    fits: ['drone', 'barge', 'hauler', 'fighter', 'scout', 'repair', 'harvester'],
+    tier: 2,
+  },
+  compressor: {
+    name: 'Ore compressor',
+    short: 'Compr.',
+    desc: '+40 % cargo hold',
+    cost: 140,
+    fits: ['drone', 'barge', 'hauler', 'harvester'],
+    tier: 1,
+  },
+};
+
+export const MODULE_IDS = Object.keys(MODULES) as ModuleId[];
+
+/** Module slots per ship class. */
+export const MODULE_SLOTS: Record<ShipClass, number> = {
+  drone: 1,
+  barge: 2,
+  hauler: 1,
+  fighter: 2,
+  scout: 1,
+  repair: 1,
+  harvester: 2,
+};
+
+export const LASER_RATE = 1.3;
+export const LASER_DAMAGE = 1.2;
+export const DRILL_VALUE = 1.15;
+export const TRACTOR_SPEED = 1.25;
+export const SHIELD_TAKEN = 0.65;
+export const COMPRESSOR_CARGO = 1.4;
+
+/** Why a module can't go on this class yet, or null. */
+export function moduleLocked(id: ModuleId, cls: ShipClass, furthestTier: number): string | null {
+  const m = MODULES[id];
+  if (!m.fits.includes(cls)) return `${m.name} does not fit a ${SHIP_STATS[cls].short}`;
+  if (furthestTier < m.tier) return `${m.name}s unlock in the frontier`;
+  return null;
+}
+
+// ---------- Scouts ----------
+
+/** A scout counts a cluster surveyed once it is this close to its center. */
+export const SURVEY_RADIUS = 8;
+/** Rocks within this distance of a surveyed center are scanned for veins. */
+export const VEIN_SCAN_RADIUS = 18;
+/** Rocks worth at least this share of the system's best ore are marked as veins. */
+export const VEIN_VALUE_SHARE = 0.5;
+/** Drones score a revealed vein this much higher. */
+export const VEIN_BONUS = 1.5;

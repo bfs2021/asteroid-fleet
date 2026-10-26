@@ -3,6 +3,9 @@ import type { Severity, SimEvent, SimEventKind } from '../sim/types';
 /** How many toasts are on screen at once. Newer arrivals wait behind these. */
 export const VISIBLE_CAP = 3;
 
+/** Dismissed bus ids remembered so a merge in the same window does not reopen the toast. */
+export const DISMISSED_CAP = 32;
+
 /** Auto-dismiss delays. Critical toasts stay until the player closes them. */
 export const TOAST_MS = {
   info: 3000,
@@ -89,6 +92,8 @@ export interface ToastInput {
 export class ToastQueue {
   private visible: Toast[] = [];
   private pending: Toast[] = [];
+  /** Bus ids the player closed, oldest first. A later merge stays hidden unless it is more severe. */
+  private dismissed: { id: number; severity: Severity }[] = [];
   private seq = 1;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private deadline: number | null = null;
@@ -108,8 +113,12 @@ export class ToastQueue {
     return this.findEvent(eventId) !== null;
   }
 
-  /** Show or, when `eventId` matches a toast already queued, update that one. Returns its key. */
-  push(input: ToastInput): string {
+  /**
+   * Show or, when `eventId` matches a toast already queued, update that one.
+   * Returns its key, or null when the player already dismissed this id and the new
+   * severity is not higher.
+   */
+  push(input: ToastInput): string | null {
     const now = this.now();
     if (input.eventId != null) {
       const existing = this.findEvent(input.eventId);
@@ -123,6 +132,9 @@ export class ToastQueue {
         }
         return existing.key;
       }
+      const held = this.dismissed.find((d) => d.id === input.eventId);
+      if (held && SEV_RANK[input.severity] >= SEV_RANK[held.severity]) return null;
+      if (held) this.dismissed.splice(this.dismissed.indexOf(held), 1);
     }
     const toast: Toast = {
       key: input.eventId != null ? `e${input.eventId}` : `m${this.seq++}`,
@@ -151,8 +163,8 @@ export class ToastQueue {
   }
 
   /** Remove a toast. A waiting one takes its place. */
-  dismiss(key: string) {
-    if (!this.take(key)) return;
+  dismiss(key: string | null) {
+    if (key == null || !this.take(key)) return;
     const now = this.now();
     this.fill(now);
     this.schedule(now);
@@ -162,7 +174,8 @@ export class ToastQueue {
    * Close the toast and return the carrier Go to should focus.
    * Null when the toast is already gone, or when it is not tied to a carrier.
    */
-  goTo(key: string): number | null {
+  goTo(key: string | null): number | null {
+    if (key == null) return null;
     const toast = this.take(key);
     if (!toast) return null;
     const now = this.now();
@@ -182,6 +195,7 @@ export class ToastQueue {
   clear() {
     this.visible = [];
     this.pending = [];
+    this.dismissed = [];
     this.clearTimer();
     this.deadline = null;
   }
@@ -196,10 +210,21 @@ export class ToastQueue {
 
   private take(key: string): Toast | null {
     const vis = this.visible.findIndex((t) => t.key === key);
-    if (vis >= 0) return this.visible.splice(vis, 1)[0];
-    const wait = this.pending.findIndex((t) => t.key === key);
-    if (wait >= 0) return this.pending.splice(wait, 1)[0];
-    return null;
+    let toast: Toast | undefined;
+    if (vis >= 0) toast = this.visible.splice(vis, 1)[0];
+    else {
+      const wait = this.pending.findIndex((t) => t.key === key);
+      if (wait >= 0) toast = this.pending.splice(wait, 1)[0];
+    }
+    if (toast?.eventId != null) this.rememberDismissed(toast.eventId, toast.severity);
+    return toast ?? null;
+  }
+
+  private rememberDismissed(id: number, severity: Severity) {
+    const idx = this.dismissed.findIndex((d) => d.id === id);
+    if (idx >= 0) this.dismissed.splice(idx, 1);
+    this.dismissed.push({ id, severity });
+    if (this.dismissed.length > DISMISSED_CAP) this.dismissed.shift();
   }
 
   /** The newest waiter comes back under the toasts that are already showing. */
@@ -264,13 +289,13 @@ export function offerToasts(
     // A toast already open for this id keeps receiving merges, even when the new
     // payload would not have opened one (a barge loss followed by a drone).
     if (!wantsToast(ev, focusedCarrierId) && !queue.has(ev.id)) continue;
-    queue.push({
+    const key = queue.push({
       eventId: ev.id,
       text: text(ev),
       severity: ev.severity,
       carrierId: ev.carrierId,
     });
-    changed = true;
+    if (key !== null) changed = true;
   }
   return changed;
 }

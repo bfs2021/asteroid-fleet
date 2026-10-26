@@ -218,13 +218,13 @@ class Engine {
   }
 
   /** Drop a toast. The next one waiting takes the free slot. */
-  dismissToast(key: string) {
+  dismissToast(key: string | null) {
     this.toasts.dismiss(key);
     this.emit();
   }
 
   /** Focus the toast's carrier through `focusCarrier` and close it. */
-  goToToast(key: string) {
+  goToToast(key: string | null) {
     const carrierId = this.toasts.goTo(key);
     if (carrierId !== null) this.focusCarrier(carrierId);
     this.emit();

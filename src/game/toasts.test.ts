@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { SEVERITY } from '../sim/state';
 import type { EventData, Severity, SimEvent, SimEventKind } from '../sim/types';
-import { TOAST_MS, TOAST_POLICY, VISIBLE_CAP, ToastQueue, offerToasts, wantsToast } from './toasts';
+import {
+  DISMISSED_CAP,
+  TOAST_MS,
+  TOAST_POLICY,
+  VISIBLE_CAP,
+  ToastQueue,
+  offerToasts,
+  wantsToast,
+} from './toasts';
 
 function ev<K extends SimEventKind>(
   kind: K,
@@ -29,6 +37,10 @@ function lost(cls: EventData['ShipLost']['cls'], count: number) {
 
 function bus(event: SimEvent, id: number): SimEvent & { id: number } {
   return { ...event, id };
+}
+
+function shipText(e: SimEvent) {
+  return e.kind === 'ShipLost' ? `${e.data.cls} x${e.count}` : e.kind;
 }
 
 describe('toast policy', () => {
@@ -187,17 +199,63 @@ describe('toast queue', () => {
   it('keeps updating a ShipLost toast after a later loss would not open one', () => {
     const now = { t: 0 };
     const q = queueAt(now);
-    const text = (e: SimEvent) => (e.kind === 'ShipLost' ? `${e.data.cls} x${e.count}` : e.kind);
     const barge = ev('ShipLost', { cls: 'barge', cause: 'destroyed' });
-    offerToasts(q, [bus(barge, 7)], 0, text);
+    offerToasts(q, [bus(barge, 7)], 0, shipText);
     expect(wantsToast(barge, 0)).toBe(true);
     now.t = 5_000;
     const follow = ev('ShipLost', { cls: 'drone', cause: 'destroyed' }, { count: 2, t: 1 });
     expect(wantsToast(follow, 0)).toBe(false);
-    offerToasts(q, [bus(follow, 7)], 0, text);
+    offerToasts(q, [bus(follow, 7)], 0, shipText);
     expect(q.shown(now.t).map((t) => t.text)).toEqual(['drone x2']);
     expect(q.shown(now.t + TOAST_MS.warn - 1)).toHaveLength(1);
     expect(q.shown(now.t + TOAST_MS.warn)).toEqual([]);
+  });
+
+  it('does not bring a dismissed toast back unless the severity rises', () => {
+    const now = { t: 0 };
+    const q = queueAt(now);
+    offerToasts(q, [bus(ev('ShipLost', { cls: 'barge', cause: 'destroyed' }), 4)], 0, shipText);
+    q.dismiss(q.shown(now.t)[0].key);
+    now.t = 1_000;
+    const again = ev('ShipLost', { cls: 'barge', cause: 'destroyed' }, { count: 2, t: 1 });
+    expect(wantsToast(again, 0)).toBe(true);
+    offerToasts(q, [bus(again, 4)], 0, shipText);
+    expect(q.shown(now.t)).toEqual([]);
+    const critical = ev(
+      'ShipLost',
+      { cls: 'drone', cause: 'destroyed' },
+      { count: 4, severity: 'critical', t: 2 },
+    );
+    offerToasts(q, [bus(critical, 4)], 0, shipText);
+    expect(q.shown(now.t).map((t) => t.severity)).toEqual(['critical']);
+    expect(q.shown(now.t)[0].text).toBe('drone x4');
+  });
+
+  it('treats Go to as a dismissal of that event', () => {
+    const q = new ToastQueue(() => 0);
+    const key = q.push({ eventId: 3, text: 'warped', severity: 'good', carrierId: 1 });
+    expect(q.goTo(key)).toBe(1);
+    q.push({ eventId: 3, text: 'warped again', severity: 'good', carrierId: 1 });
+    expect(q.shown(0)).toEqual([]);
+    q.push({ eventId: 3, text: 'critical warp', severity: 'critical', carrierId: 1 });
+    expect(q.shown(0).map((t) => t.severity)).toEqual(['critical']);
+  });
+
+  it('forgets the oldest dismissal past the cap, and a cleared queue forgets them all', () => {
+    const q = new ToastQueue(() => 0);
+    for (let id = 1; id <= DISMISSED_CAP; id++) {
+      q.dismiss(q.push({ eventId: id, text: `e${id}`, severity: 'info', carrierId: null }));
+    }
+    q.push({ eventId: 1, text: 'still out', severity: 'info', carrierId: null });
+    expect(q.shown(0)).toEqual([]);
+    q.dismiss(
+      q.push({ eventId: DISMISSED_CAP + 1, text: 'overflow', severity: 'info', carrierId: null }),
+    );
+    q.push({ eventId: 1, text: 'back', severity: 'info', carrierId: null });
+    expect(q.shown(0).map((t) => t.text)).toEqual(['back']);
+    q.clear();
+    q.push({ eventId: 2, text: 'fresh', severity: 'info', carrierId: null });
+    expect(q.shown(0).map((t) => t.text)).toEqual(['fresh']);
   });
 
   it('puts the newest severe event on top and skips inbox-only kinds', () => {

@@ -229,24 +229,35 @@ function Toasts() {
   useGame();
   // Expiry is a timestamp. The queue's single timer asks for another render when one is due;
   // reading the clock here drops a toast on the next tick without a timer per toast.
+  // The live region stays mounted so announcements are not lost on the empty-to-first transition.
   // oxlint-disable-next-line react/purity
   const items = engine.toasts.shown(Date.now());
-  if (items.length === 0) return null;
   return (
     <div className="toasts" aria-live="polite">
-      {items.map((t) => (
-        <div key={t.key} className={`toast sev-${t.severity}`} role="status">
-          <span className="toast-text">{t.text}</span>
-          {t.carrierId !== null && (
-            <button type="button" onClick={() => engine.goToToast(t.key)}>
-              Go to
+      {items.map((t) => {
+        const system = t.systemId != null ? engine.state.systems[t.systemId]?.name : undefined;
+        return (
+          <div
+            key={t.key}
+            className={`toast sev-${t.severity}`}
+            role={t.severity === 'critical' ? 'alert' : undefined}
+          >
+            <span className="toast-text">{t.text}</span>
+            {t.carrierId !== null && (
+              <button
+                type="button"
+                aria-label={system ? `Go to ${system}` : 'Go to'}
+                onClick={() => engine.goToToast(t.key)}
+              >
+                Go to
+              </button>
+            )}
+            <button type="button" aria-label="Dismiss" onClick={() => engine.dismissToast(t.key)}>
+              ×
             </button>
-          )}
-          <button type="button" aria-label="Dismiss" onClick={() => engine.dismissToast(t.key)}>
-            ×
-          </button>
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

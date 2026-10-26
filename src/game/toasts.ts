@@ -75,6 +75,8 @@ export interface Toast {
   severity: Severity;
   /** Set for carrier-scoped events. Engine errors leave it null, so they have no Go to. */
   carrierId: number | null;
+  /** System the event happened in, used to name the Go to button. Null for engine errors. */
+  systemId: number | null;
   /** Wall-clock ms when it arrived, or when a merge restarted the timer while it was visible. */
   shownAt: number;
 }
@@ -84,6 +86,7 @@ export interface ToastInput {
   text: string;
   severity: Severity;
   carrierId: number | null;
+  systemId?: number | null;
 }
 
 /**
@@ -129,6 +132,7 @@ export class ToastQueue {
         existing.text = input.text;
         existing.severity = input.severity;
         existing.carrierId = input.carrierId;
+        if (input.systemId !== undefined) existing.systemId = input.systemId;
         if (this.visible.includes(existing)) {
           existing.shownAt = now;
           this.schedule(now);
@@ -145,6 +149,7 @@ export class ToastQueue {
       text: input.text,
       severity: input.severity,
       carrierId: input.carrierId,
+      systemId: input.systemId ?? null,
       shownAt: now,
     };
     // Newest on top. A full row keeps critical toasts and waits the oldest lesser one.
@@ -314,6 +319,7 @@ export function offerToasts(
       text: text(ev),
       severity: ev.severity,
       carrierId: ev.carrierId,
+      systemId: ev.systemId,
     });
     if (key !== null) changed = true;
   }

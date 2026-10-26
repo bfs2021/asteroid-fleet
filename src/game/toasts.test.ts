@@ -341,6 +341,7 @@ describe('toast queue', () => {
       (e) => e.kind,
     );
     expect(q.shown(0).map((t) => t.text)).toEqual(['PiratesArrived', 'WelcomeBack']);
+    expect(q.shown(0).map((t) => t.systemId)).toEqual([0, 0]);
   });
 
   it('does not focus an engine error, and a merge while waiting does not add a second toast', () => {

@@ -8,6 +8,13 @@ import { CarrierPanel } from './CarrierPanel';
 import { DoctrinePanel } from './DoctrinePanel';
 import { downloadFile } from './download';
 import { formatEvent, toneClass } from './events';
+import {
+  carrierChoices,
+  filterEvents,
+  mergeForInbox,
+  type CarrierFilter,
+  type SeverityFilter,
+} from './inbox';
 import { SceneBoundary } from './ErrorBoundary';
 import { FleetPanel } from './FleetPanel';
 import { Hud } from './Hud';
@@ -57,6 +64,10 @@ function write(key: string, v: string) {
 function LogPanel() {
   const s = useGame();
   const st = s.stats;
+  const [carrier, setCarrier] = useState<CarrierFilter>('all');
+  const [severity, setSeverity] = useState<SeverityFilter>('all');
+  const choices = carrierChoices(engine.state.ops, s.systems);
+  const rows = filterEvents(mergeForInbox(s.log), carrier, severity);
   return (
     <>
       <h3>This run</h3>
@@ -65,12 +76,45 @@ function LogPanel() {
         {st.piratesKilled} pirates destroyed · {st.shipsLost} ships lost · prestige ×
         {s.lifetime.prestiges}
       </p>
-      <h3>Event log</h3>
+      <h3>Event inbox</h3>
+      <div className="row">
+        <label>
+          Carrier{' '}
+          <select
+            aria-label="Carrier"
+            value={carrier === 'all' ? 'all' : String(carrier)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setCarrier(v === 'all' ? 'all' : Number(v));
+            }}
+          >
+            <option value="all">All</option>
+            {choices.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Severity{' '}
+          <select
+            aria-label="Severity"
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value as SeverityFilter)}
+          >
+            <option value="all">All</option>
+            <option value="warn+">Warn+</option>
+            <option value="critical">Critical</option>
+          </select>
+        </label>
+      </div>
       <div className="log">
-        {s.log.map((l, i) => (
-          <div key={i} className={toneClass(l.severity)}>
+        {rows.map((l, i) => (
+          <div key={`${l.kind}-${l.carrierId}-${l.t}-${i}`} className={toneClass(l.severity)}>
             <span className="t">{new Date(l.t * 1000).toISOString().slice(11, 19)}</span>
             {formatEvent(l)}
+            {l.count > 1 && <span className="t">x{l.count}</span>}
           </div>
         ))}
       </div>
@@ -181,13 +225,30 @@ function SaveNotice() {
   );
 }
 
-function Toast() {
+function Toasts() {
   useGame();
-  const t = engine.toast;
-  // The engine re-renders every tick, so reading the clock here hides the toast on time.
+  // Expiry is a timestamp. The queue's single timer asks for another render when one is due;
+  // reading the clock here drops a toast on the next tick without a timer per toast.
   // oxlint-disable-next-line react/purity
-  if (!t || Date.now() - t.at > 2500) return null;
-  return <div className="toast">{t.text}</div>;
+  const items = engine.toasts.shown(Date.now());
+  if (items.length === 0) return null;
+  return (
+    <div className="toasts" aria-live="polite">
+      {items.map((t) => (
+        <div key={t.key} className={`toast sev-${t.severity}`} role="status">
+          <span className="toast-text">{t.text}</span>
+          {t.carrierId !== null && (
+            <button type="button" onClick={() => engine.goToToast(t.key)}>
+              Go to
+            </button>
+          )}
+          <button type="button" aria-label="Dismiss" onClick={() => engine.dismissToast(t.key)}>
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function App() {
@@ -273,7 +334,7 @@ export function App() {
         </span>
       </div>
       <SaveNotice />
-      <Toast />
+      <Toasts />
       <Offline />
       {menu && (
         <Suspense fallback={null}>

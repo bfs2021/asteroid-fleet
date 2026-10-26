@@ -623,16 +623,47 @@ select.inherit {
   font-family: ui-monospace, monospace;
   font-size: 11px;
 }
-.toast {
+.toasts {
   position: absolute;
   bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(60, 20, 28, 0.95);
-  border: 1px solid var(--bad);
-  padding: 7px 14px;
+  z-index: 6;
+  width: min(440px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(12, 20, 36, 0.95);
+  border: 1px solid var(--line-strong);
+  padding: 8px 10px;
   border-radius: 8px;
-  z-index: 5;
+  line-height: 1.35;
+}
+.toast .toast-text {
+  flex: 1;
+}
+.toast button {
+  padding: 2px 8px;
+}
+.toast.sev-critical {
+  background: rgba(60, 20, 28, 0.95);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.toast.sev-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.toast.sev-good {
+  border-color: var(--good);
+  color: var(--good);
 }
 .save-notice {
   position: absolute;

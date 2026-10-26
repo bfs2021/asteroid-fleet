@@ -25,7 +25,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 const NAMES = [
   'Kestrel',
@@ -166,6 +166,7 @@ export function enterSystem(s: GameState, id: number) {
   const sys = s.systems[id];
   s.systemId = id;
   s.pirates = [];
+  s.containers = [];
   s.fx = [];
   s.carrier.pos = v3();
   s.carrier.target = null;
@@ -253,6 +254,7 @@ export function createShip(
     targetId: -1,
     escortId: -1,
     station: null,
+    bargeId: -1,
     fireCooldown: 0,
   };
   s.ships.push(ship);
@@ -332,6 +334,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     systems: makeSystems(seed),
     systemId: 0,
     fields: {},
+    containers: [],
     doctrine: carry?.doctrine ?? {
       fleet: { ...DEFAULT_STANCE },
       byClass: { drone: { mining: 'safe' } },

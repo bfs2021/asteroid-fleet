@@ -36,6 +36,13 @@ export const migrations: Record<number, Migration> = {
   },
   // v3: per-system depletion records (#14). Older saves have none.
   2: (save) => ({ ...save, fields: {} }),
+  // v4: salvage containers and barge drone bays (#13).
+  3: (save) => {
+    save.containers = [];
+    if (Array.isArray(save.ships))
+      for (const sh of save.ships) if (sh && typeof sh === 'object') sh.bargeId ??= -1;
+    return save;
+  },
 };
 
 export function applyMigrationSteps(
@@ -96,6 +103,7 @@ function validateSave(save: SaveBlob): MigrateResult {
   if (!Array.isArray(save.asteroids)) return { ok: false, reason: 'corrupt' };
   if (!Array.isArray(save.hangars)) return { ok: false, reason: 'corrupt' };
   if (!Array.isArray(save.systems)) return { ok: false, reason: 'corrupt' };
+  if (!Array.isArray(save.containers)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.fields)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.carrier)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.stats)) return { ok: false, reason: 'corrupt' };

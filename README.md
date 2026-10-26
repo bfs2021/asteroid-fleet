@@ -51,9 +51,11 @@ Every save schema change needs all three of these:
 
 1. Bump `SAVE_VERSION`.
 2. Add the `migrations[n]` step that upgrades the previous version to the new one.
-3. Check in a fixture of the previous version under `src/game/fixtures/` and a test that loads it and migrates it to the current version. `src/game/fixtures/save-v1.json` is the v1 fixture and `save-v2.json` the v2 one (automation, #11).
+3. Check in a fixture of the previous version under `src/game/fixtures/` and a test that loads it and migrates it to the current version. `src/game/fixtures/save-v1.json` is the v1 fixture `save-v2.json` the v2 one (automation, #11) and `save-v3.json` the v3 one (field records, #14).
 
 v3 added `fields`: when the carrier leaves a system it keeps a compact depletion record (`[index, oreFraction, respawn]` for each rock that is not full). On return the field is regenerated from the seed, the record applied, and refill added for the sim time spent away (depleted timers count down, partly mined rocks refill over `FIELD_REFILL_SECS`). All records together stay under 16 KB of save, tested in `src/sim/fields.test.ts`.
+
+v4 added `containers` (cargo dropped by destroyed barges, salvaged by haulers until it decays) and `Ship.bargeId` (the barge whose drone bay a drone is based at, `-1` for the carrier).
 
 A save that is corrupt, from a newer version than this build, or otherwise unknown is not deleted and not overwritten. The raw text is copied to `asteroid-fleet-save-backup` in both IndexedDB and the localStorage fallback (the same pair of stores as the primary key `asteroid-fleet-save`). A later failure that is byte-for-byte the same does not rewrite that copy. A different failure is written to `asteroid-fleet-save-backup-<timestamp>` so the earlier backup stays. The game shows "Your save could not be loaded and was backed up." and pauses automatic saving so the original stays put. If both stores reject the copy, it shows "could not be backed up" instead, and a reset or import then warns that the save will be lost. A hard reset or a successful import may reuse the primary slot; backup keys are left alone. A bad import is rejected and does not write any key.
 

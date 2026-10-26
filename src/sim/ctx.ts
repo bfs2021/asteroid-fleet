@@ -331,6 +331,7 @@ function dock(s: GameState, ship: Ship) {
   ship.targetId = -1;
   ship.escortId = -1;
   ship.station = null;
+  ship.bargeId = -1;
 }
 
 export function goHome(s: GameState, ship: Ship, dt: number): boolean {

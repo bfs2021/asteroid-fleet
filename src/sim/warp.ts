@@ -1,9 +1,10 @@
 // Warp jumps and the emergency jump when the carrier is disabled.
 
-import { destroyShip } from './ctx';
-import { copy } from './math';
+import { DOCK_RADIUS } from './config';
+import { destroyShip, dock } from './ctx';
+import { copy, dist } from './math';
 import { enterSystem, log } from './state';
-import type { GameState } from './types';
+import type { GameState, Ship } from './types';
 
 export function carrierDisabled(s: GameState) {
   log(s, 'Carrier hull critical! Emergency jump to the starter system.', 'bad');
@@ -27,10 +28,31 @@ export function warpStep(s: GameState, dt: number) {
   executeJump(s);
 }
 
+/**
+ * Whether a ship makes the jump: docked, within DOCK_RADIUS of the carrier
+ * (it docks a tick or two later anyway), or riding in a barge that does.
+ */
+function aboard(s: GameState, ship: Ship, byId: Map<number, Ship>): boolean {
+  const host = ship.mode === 'carried' ? byId.get(ship.bargeId) : ship;
+  if (!host || host.hull <= 0) return false;
+  return host.mode === 'docked' || dist(host.pos, s.carrier.pos) <= DOCK_RADIUS;
+}
+
+/** Ships that would be lost if the carrier jumped now. Shared with the HUD count. */
+export function leftBehind(s: GameState): Ship[] {
+  const byId = new Map(s.ships.map((x) => [x.id, x]));
+  return s.ships.filter((x) => !aboard(s, x, byId));
+}
+
 export function executeJump(s: GameState) {
   if (!s.warp) return;
   const target = s.warp.targetSystem;
-  const outside = s.ships.filter((x) => x.mode !== 'docked');
+  const outside = leftBehind(s);
+  const lost = new Set(outside);
+  // Barges before their bay drones, so a drone's barge has unloaded first.
+  for (const x of s.ships)
+    if (x.mode !== 'docked' && x.mode !== 'carried' && !lost.has(x)) dock(s, x);
+  for (const x of s.ships) if (x.mode === 'carried' && !lost.has(x)) dock(s, x);
   for (const l of outside) destroyShip(s, l, 'outside at jump time');
   s.ships = s.ships.filter((x) => x.mode === 'docked');
   s.fx.push({ kind: 'warp', a: copy(s.carrier.pos), b: copy(s.carrier.pos), ttl: 1.5 });

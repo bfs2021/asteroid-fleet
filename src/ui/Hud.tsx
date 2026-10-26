@@ -4,6 +4,7 @@ import { maxEnergy } from '../sim/state';
 import { carrierStorage } from '../sim/hangar';
 import { refineRate, TIER_NAMES } from '../sim/config';
 import { heatFactor } from '../sim/tick';
+import { leftBehind } from '../sim/warp';
 
 export function fmt(n: number, digits = 1): string {
   const a = Math.abs(n);
@@ -147,7 +148,7 @@ export function Hud({
 function Alerts() {
   const s = useGame();
   if (s.warp) {
-    const outside = s.ships.filter((x) => x.mode !== 'docked').length;
+    const outside = leftBehind(s).length;
     return (
       <div className="alert warp">
         Warp to {s.systems[s.warp.targetSystem].name} in {Math.ceil(s.warp.charge)} s · recalling

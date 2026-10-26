@@ -352,7 +352,7 @@ export function transfer(from: Ship, to: Ship, cap: number) {
   }
 }
 
-function dock(s: GameState, ship: Ship) {
+export function dock(s: GameState, ship: Ship) {
   unloadAtCarrier(s, ship);
   ship.mode = 'docked';
   ship.targetId = -1;

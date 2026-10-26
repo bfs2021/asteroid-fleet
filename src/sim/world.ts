@@ -155,6 +155,8 @@ export function reserves(s: GameState, dt: number, ctx: Ctx) {
 }
 
 export function drift(s: GameState, dt: number) {
+  // Hold still while the warp charges, so recalled ships aren't chasing the carrier.
+  if (s.warp) return;
   const c = s.carrier;
   if (c.stance === 'followRich' && (!c.target || Math.round(s.time / DT) % 300 === 0)) {
     let best: Vec3 | null = null;

@@ -15,7 +15,7 @@ pnpm run lint      # oxlint, type-aware via tsgolint (works with TypeScript 7)
 pnpm run format    # oxfmt; format:check verifies without writing
 ```
 
-The game is published to GitHub Pages at https://deadronos.github.io/asteroid-fleet/ . Pushes to `main` run the CI checks and the Playwright smoke test, and deploy only when they pass.
+The game is published to GitHub Pages at https://deadronos.github.io/asteroid-fleet/ . Pushing a `v*` tag (for example `git tag v0.0.1 && git push origin v0.0.1`) deploys it, but only after the CI checks and the Playwright smoke test pass.
 
 pnpm keeps one package store on the machine, so another git worktree reuses packages that are already downloaded.
 

@@ -45,7 +45,8 @@ test('saving goes through the worker and survives a reload', async ({ page }) =>
     });
   await page.goto('./');
   await page.getByRole('button', { name: 'Take command' }).click();
-  await expect.poll(async () => (await state()).time).toBeGreaterThan(1);
+  // CI renders in software and starts slowly; any sim progress is enough here.
+  await expect.poll(async () => (await state()).time, { timeout: 20_000 }).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Save Management' }).click();
   await page.getByRole('button', { name: 'Save now' }).click();
@@ -55,5 +56,5 @@ test('saving goes through the worker and survives a reload', async ({ page }) =>
   await page.reload();
   const loaded = await state();
   expect(loaded.seed).toBe(saved.seed);
-  expect(loaded.time).toBeGreaterThan(1);
+  expect(loaded.time).toBeGreaterThanOrEqual(saved.time);
 });

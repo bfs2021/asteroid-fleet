@@ -1,0 +1,152 @@
+// Carrier systems and the environment: power, refining, hazards, the asteroid
+// field, reserve rebuilds and carrier drift.
+
+import {
+  COVER_RADIUS,
+  DT,
+  FUSION_H2,
+  FUSION_RATE,
+  REFINE_ENERGY,
+  refineRate,
+  SHIP_STATS,
+  SOLAR_RATE,
+  warpCost,
+} from './config';
+import { SHIELD_HP, damageShip, inHazard, type Ctx } from './ctx';
+import { rule } from './doctrine';
+import { oreNear } from './mining';
+import { dist, dist2, moveToward, rand } from './math';
+import { lvl } from './research';
+import { clusterCenters, createShip, log, maxEnergy, spawnAsteroid } from './state';
+import type { GameState, ShipClass, Vec3 } from './types';
+
+export function power(s: GameState, dt: number) {
+  const c = s.carrier;
+  const sys = s.systems[s.systemId];
+  const max = maxEnergy(s);
+  let gain =
+    SOLAR_RATE * sys.brightness * (1 + 0.2 * lvl(s, 'solar')) * (s.storm.active > 0 ? 1.6 : 1);
+  if (lvl(s, 'fusion') > 0 && c.h2 > 0 && c.energy < max) {
+    const burn = Math.min(c.h2, FUSION_H2 * dt);
+    c.h2 -= burn;
+    gain += FUSION_RATE * (burn / (FUSION_H2 * dt));
+  }
+  c.energy = Math.min(max, c.energy + gain * dt);
+  // Shield regen costs energy; when the pool is empty the shields stay down.
+  if (c.shield < 1 && c.energy > 0) {
+    const mult = s.powerMode === 'defense' ? 2 : s.powerMode === 'income' ? 0.5 : 1;
+    const regen = Math.min(1 - c.shield, 0.03 * mult * dt);
+    const cost = regen * SHIELD_HP * 0.4;
+    if (c.energy >= cost) {
+      c.energy -= cost;
+      c.shield += regen;
+    }
+  }
+}
+
+export function refine(s: GameState, dt: number, ctx: Ctx) {
+  const c = s.carrier;
+  if (c.ore <= 0) return;
+  const max = maxEnergy(s);
+  let floor = s.powerMode === 'defense' ? 0.5 * max : s.powerMode === 'balanced' ? 0.15 * max : 0;
+  if (rule(s, 'reserveWarpEnergy')) {
+    const sys = s.systems[s.systemId];
+    floor = Math.max(floor, warpCost(sys.distance, Math.max(0, sys.distance - 1)));
+  }
+  const avail = Math.max(0, c.energy - floor);
+  const amount = Math.min(c.ore, refineRate(c.refinery) * dt, avail / REFINE_ENERGY);
+  if (amount <= 0) return;
+  const value = (c.oreValue / c.ore) * amount;
+  c.ore -= amount;
+  c.oreValue -= value;
+  if (c.ore < 1e-6) {
+    c.ore = 0;
+    c.oreValue = 0;
+  }
+  c.energy -= amount * REFINE_ENERGY;
+  s.credits += value;
+  ctx.income += value;
+  ctx.mining += value;
+}
+
+export function hazards(s: GameState, dt: number) {
+  for (const sh of s.ships) {
+    if (sh.mode === 'docked') continue;
+    for (const h of s.hazards)
+      if (dist2(h.pos, sh.pos) < h.radius * h.radius) damageShip(s, sh, h.dps * dt);
+    if (s.storm.active > 0 && dist(sh.pos, s.carrier.pos) > COVER_RADIUS)
+      damageShip(s, sh, 0.6 * dt);
+  }
+}
+
+// ---------- field, reserves, carrier ----------
+
+export function field(s: GameState, dt: number) {
+  const sys = s.systems[s.systemId];
+  let scouts = -1;
+  let centers: Vec3[] | null = null;
+  for (let i = 0; i < s.asteroids.length; i++) {
+    const a = s.asteroids[i];
+    if (a.ore > 0 || a.respawn <= 0) continue;
+    a.respawn -= dt;
+    if (a.respawn <= 0) {
+      if (scouts < 0) {
+        scouts = 0;
+        for (const x of s.ships) if (x.cls === 'scout' && x.mode !== 'docked') scouts++;
+      }
+      centers ??= clusterCenters(sys);
+      const c = centers[Math.floor(rand(s) * centers.length)];
+      const fresh = spawnAsteroid(s, () => rand(s), c, sys, Math.min(0.3, scouts * 0.06));
+      s.asteroids[i] = fresh;
+    }
+  }
+}
+
+export function reserves(s: GameState, dt: number, ctx: Ctx) {
+  const cd = 1 - 0.2 * lvl(s, 'reserveCd');
+  const defs: [ShipClass, number, number][] = [
+    ['drone', 2 * lvl(s, 'reserveDrone'), 120 * cd],
+    ['fighter', lvl(s, 'reserveFighter'), 300 * cd],
+  ];
+  for (const [cls, min, cooldown] of defs) {
+    if (min <= 0 || !s.unlocked.includes(cls)) continue;
+    const n = ctx.byClass[cls].length;
+    if (n >= min) {
+      s.reserveTimers[cls] = cooldown;
+      continue;
+    }
+    const t = (s.reserveTimers[cls] ?? cooldown) - dt;
+    s.reserveTimers[cls] = t;
+    if (t <= 0) {
+      if (createShip(s, cls))
+        log(s, `Reserve rebuilt a ${SHIP_STATS[cls].name.toLowerCase()}.`, 'good');
+      s.reserveTimers[cls] = cooldown;
+    }
+  }
+}
+
+export function drift(s: GameState, dt: number) {
+  const c = s.carrier;
+  if (c.stance === 'followRich' && (!c.target || Math.round(s.time / DT) % 300 === 0)) {
+    let best: Vec3 | null = null;
+    let bv = 0;
+    for (const cc of clusterCenters(s.systems[s.systemId])) {
+      if (inHazard(s, cc)) continue;
+      const v = oreNear(s, cc, 14) / (dist(cc, c.pos) + 30);
+      if (v > bv) {
+        bv = v;
+        best = cc;
+      }
+    }
+    if (best) {
+      // park just short of the cluster so it sits inside carrier cover
+      const d = dist(best, c.pos) || 1;
+      const f = Math.max(0, (d - 22) / d);
+      c.target = { x: c.pos.x + (best.x - c.pos.x) * f, y: 0, z: c.pos.z + (best.z - c.pos.z) * f };
+    } else c.target = null;
+  }
+  if (c.stance === 'hold') c.target = null;
+  if (c.target && c.energy > maxEnergy(s) * 0.1) {
+    if (!moveToward(c.pos, c.target, 1.2 * dt)) c.energy -= 1 * dt;
+  }
+}

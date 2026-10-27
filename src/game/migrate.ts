@@ -110,6 +110,11 @@ export const migrations: Record<number, Migration> = {
         if (isRecord(op) && isRecord(op.carrier)) op.carrier.hullClass ??= 'standard';
     return save;
   },
+  // v12: per-carrier alert rules in Doctrine (#79). Old saves keep the built-in policy.
+  11: (save) => {
+    save.alerts = { fleet: {}, byCarrier: {} };
+    return save;
+  },
 };
 
 const LEGACY_TONE: Record<string, Severity> = {
@@ -180,6 +185,8 @@ function validateSave(save: SaveBlob): MigrateResult {
   if (!isRecord(save.doctrine)) return { ok: false, reason: 'corrupt' };
   if (!isRecord(save.automation)) return { ok: false, reason: 'corrupt' };
 
+  if (!isRecord(save.alerts) || !isRecord(save.alerts.fleet) || !isRecord(save.alerts.byCarrier))
+    save.alerts = { fleet: {}, byCarrier: {} };
   if (!Array.isArray(save.log)) save.log = [];
   if (!Array.isArray(save.cards)) save.cards = [];
   if (!Array.isArray(save.unlockedRules)) save.unlockedRules = [];

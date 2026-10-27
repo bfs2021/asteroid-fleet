@@ -307,6 +307,11 @@ describe('migrate', () => {
     expect(r.state.ops[0].carrier.maxHull).toBe(saveV10.ops[0].carrier.maxHull);
   });
 
+  it('gives older saves empty alert rules (#79)', () => {
+    const r = migrate(saveV10);
+    expect(r.ok && r.state.alerts).toEqual({ fleet: {}, byCarrier: {} });
+  });
+
   it('rejects a save whose operations are missing or broken', () => {
     const v10 = migrate(saveV9);
     if (!v10.ok) throw new Error('fixture');

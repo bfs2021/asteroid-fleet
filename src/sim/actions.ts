@@ -23,7 +23,9 @@ import { bind, createShip, emit, focused, jumpCost, maxEnergy, newGame } from '.
 import { executeJump } from './tick';
 import { RETURN_GRACE_S, dematerialise, materialise, runBackground } from './background';
 import type {
+  AlertMode,
   GameState,
+  SimEventKind,
   CarrierStance,
   Sim,
   HangarType,
@@ -49,6 +51,7 @@ export type Order =
       patch: Partial<Stance> | null;
       key?: keyof Stance;
     }
+  | { type: 'setAlert'; scope: 'fleet' | number; kind: SimEventKind; mode: AlertMode | null }
   | { type: 'addCard'; card: Omit<RuleCard, 'id'> }
   | { type: 'updateCard'; id: number; card: Omit<RuleCard, 'id'> }
   | { type: 'moveCard'; id: number; to: number }
@@ -192,6 +195,19 @@ export function order(s: Sim, c: Order): string | null {
       Object.assign(target, c.patch);
       return null;
     }
+    case 'setAlert': {
+      if (c.kind === 'Legacy') return 'No such event';
+      if (c.scope === 'fleet') {
+        if (c.mode === null) delete s.alerts.fleet[c.kind];
+        else s.alerts.fleet[c.kind] = c.mode;
+        return null;
+      }
+      const over = (s.alerts.byCarrier[c.scope] ??= {});
+      if (c.mode === null) delete over[c.kind];
+      else over[c.kind] = c.mode;
+      if (Object.keys(over).length === 0) delete s.alerts.byCarrier[c.scope];
+      return null;
+    }
     case 'addCard': {
       if (s.cards.length >= cardSlots(s)) return 'All card slots are in use';
       const card = structuredClone(c.card);
@@ -323,6 +339,7 @@ export function prestige(s: GameState, hull?: HullId): GameState {
       researchEarned: s.lifetime.researchEarned + rp,
     },
     doctrine: structuredClone(s.doctrine),
+    alerts: structuredClone(s.alerts),
     cards: structuredClone(s.cards),
     automation: structuredClone(s.automation),
   });

@@ -8,7 +8,7 @@ import { MODES, PUMP_MS, type Frame, type OutMsg } from './protocol';
 import { applySnapshot, type CarrierBrief } from './snapshot';
 import { allowSaveOverwrite, loadGame, saveGame, saveOverwriteBlocked } from './save';
 import { getActiveSlot, writeSlot } from './slots';
-import { offerToasts, ToastQueue } from './toasts';
+import { alertActions, offerToasts, ToastQueue } from './toasts';
 
 const AUTOSAVE_MS = 15000;
 
@@ -43,6 +43,8 @@ class Engine {
   epoch = 0;
   /** Carrier the player is looking at; follows the worker's `focusId`. */
   focusedCarrierId = 0;
+  /** Bus ids whose pause or focus rule already fired. */
+  private alertSeen = new Set<number>();
   /** One entry per carrier for the carrier bar, from the latest state message. */
   carriers: CarrierBrief[] = [];
   /** Warnings and worse that arrived for a carrier since it was last viewed. */
@@ -145,7 +147,11 @@ class Engine {
         const ids = new Set(msg.events.map((e) => e.id));
         this.events = [...msg.events, ...this.events.filter((e) => !ids.has(e.id))].slice(0, 50);
         this.markUnseen(msg.events);
-        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId)) this.emit();
+        const rules = this.state.alerts;
+        const act = alertActions(msg.events, rules, this.alertSeen);
+        if (act.focus !== null) this.focusCarrier(act.focus);
+        if (act.pause && !this.paused) this.togglePause();
+        if (offerToasts(this.toasts, msg.events, this.focusedCarrierId, rules)) this.emit();
         return;
       }
       case 'error':
@@ -311,6 +317,7 @@ class Engine {
     this.pendingFocus = null;
     this.unseen.clear();
     this.toasts.clear();
+    this.alertSeen.clear();
     this.events = [];
     this.saveNotice = null;
     this.saveBackupFailed = false;

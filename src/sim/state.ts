@@ -18,7 +18,8 @@ import {
 import { addPreset } from './cards';
 import { findSpace } from './hangar';
 import { onSphere, seeded, v3 } from './math';
-import { lvl, repeatEffect } from './research';
+import { admiraltyEffect } from './admiralty';
+import { lvl, repeatEffect, softcap } from './research';
 import type {
   Asteroid,
   EventData,
@@ -40,7 +41,7 @@ import type {
 } from './types';
 
 /** Bump together with a `migrations[n]` step and a fixture. See README "Save migrations". */
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 /** Every `Operation` field. The `satisfies` below fails to compile when one is missing. */
 export const OP_KEYS = [
@@ -118,6 +119,12 @@ class SimView implements Sim {
   }
   set marks(v) {
     this.g.marks = v;
+  }
+  get admiralty() {
+    return this.g.admiralty;
+  }
+  set admiralty(v) {
+    this.g.admiralty = v;
   }
   get researchLevels() {
     return this.g.researchLevels;
@@ -560,7 +567,8 @@ export function maxEnergy(s: Sim): number {
     ENERGY_MAX *
     HULLS[s.carrier.hullClass].energy *
     (1 + 0.25 * lvl(s, 'energyCap')) *
-    (1 + repeatEffect(s, 'deepEnergy'))
+    (1 + repeatEffect(s, 'deepEnergy')) *
+    (1 + admiraltyEffect(s, 'admEnergy'))
   );
 }
 
@@ -728,6 +736,7 @@ interface Carry {
   discovered: number[];
   lifetime: GameState['lifetime'];
   marks?: number;
+  admiralty?: Record<string, number>;
   doctrine?: GameState['doctrine'];
   alerts?: GameState['alerts'];
   cards?: GameState['cards'];
@@ -798,7 +807,10 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
     seed,
     time: 0,
     nextId: 1,
-    credits: 150 + 250 * (carry?.researchLevels.startCredits ?? 0),
+    credits:
+      150 +
+      250 * (carry?.researchLevels.startCredits ?? 0) +
+      Math.round(softcap(carry?.admiralty?.admCredits ?? 0, 5000)),
     research: carry?.research ?? 0,
     researchLevels: carry?.researchLevels ?? {},
     unlocked: carry?.unlocked ?? [],
@@ -829,6 +841,7 @@ export function newGame(seed = 1337, carry?: Carry): GameState {
       marksEarned: 0,
     },
     marks: carry?.marks ?? 0,
+    admiralty: carry?.admiralty ?? {},
     powerMode: 'balanced',
     log: [],
     events: [],

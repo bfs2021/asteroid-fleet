@@ -79,7 +79,7 @@ export class SimRunner {
         return;
       case 'prestige':
         if (!this.state) return;
-        this.adopt(prestige(this.state));
+        this.adopt(prestige(this.state, msg.hull));
         this.sendEvents();
         this.sendState();
         this.sendFrame();

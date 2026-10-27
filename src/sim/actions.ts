@@ -7,6 +7,7 @@ import {
   moduleLocked,
   REFINERY_COST,
   NEW_HANGAR_COST,
+  CARRIER_COST,
   OFFLINE_CAP_S,
   OFFLINE_EFFICIENCY,
   MARKS_DIVISOR,
@@ -20,9 +21,20 @@ import { cardSlots, checkCard, nextCardId } from './cards';
 import { autoBuyUnlocked, autoRebuildUnlocked, engagementUnlocked } from './automation';
 import { CHALLENGES, shipBanned } from './modifiers';
 import { moveShip as moveOnBoard } from './hangar';
+import { carrierSlots } from './milestones';
 import { buyAdmiralty } from './admiralty';
 import { buyResearch as buyNode, lvl, RESEARCH_BY_ID } from './research';
-import { bind, createShip, emit, focused, jumpCost, maxEnergy, newGame } from './state';
+import {
+  addCarrier,
+  bind,
+  createShip,
+  emit,
+  focused,
+  jumpCost,
+  maxEnergy,
+  newGame,
+  stateOf,
+} from './state';
 import { executeJump } from './tick';
 import { RETURN_GRACE_S, dematerialise, materialise, runBackground } from './background';
 import type {
@@ -48,6 +60,8 @@ export type Order =
   | { type: 'moveShip'; shipId: number; hangarId: number; start: number }
   | { type: 'buySlot'; hangarId: number }
   | { type: 'buyHangar'; hangarType: HangarType }
+  /** Buy another carrier (#78); credits are shared, so any carrier can place it. */
+  | { type: 'buyCarrier' }
   | { type: 'retrofitHangar'; hangarId: number; hangarType: HangarType }
   | { type: 'setLaunchOrder'; hangarId: number; order: ShipClass[] }
   | {
@@ -144,6 +158,16 @@ export function order(s: Sim, c: Order): string | null {
       if (s.credits < cost) return 'Not enough credits';
       s.credits -= cost;
       h.slots++;
+      return null;
+    }
+    case 'buyCarrier': {
+      const g = stateOf(s);
+      const n = g.ops.length;
+      if (n >= carrierSlots(g)) return 'No free carrier slot';
+      const cost = CARRIER_COST(n);
+      if (g.credits < cost) return 'Not enough credits';
+      g.credits -= cost;
+      addCarrier(g);
       return null;
     }
     case 'buyHangar': {
@@ -334,6 +358,11 @@ export function researchPayout(s: Pick<GameState, 'stats'>): number {
   return Math.floor(Math.sqrt(s.stats.oreValueDelivered / RP_DIVISOR)) * s.stats.furthestTier;
 }
 
+/** Carriers survive a reset (#78): as many fresh ones as were owned, up to the slots. */
+function refillCarriers(next: GameState, owned: number) {
+  for (const n = Math.min(owned, carrierSlots(next)); next.ops.length < n;) addCarrier(next);
+}
+
 export function prestige(
   s: GameState,
   hull?: HullId,
@@ -363,6 +392,7 @@ export function prestige(
     cards: structuredClone(s.cards),
     automation: structuredClone(s.automation),
   });
+  refillCarriers(next, s.ops.length);
   emit(focused(next), 'Prestiged', { research: rp });
   return next;
 }
@@ -397,8 +427,8 @@ export function marksPayout(s: Pick<GameState, 'stats' | 'lifetime'>): number {
 
 /**
  * Second prestige layer (#68, Q6 in #49). Resets the research tree, RP and discovered systems
- * along with the run. Keeps automation nodes, unlocked hulls and rules, carriers (`ops` are
- * rebuilt as one fresh carrier until #78), Marks, doctrine and cards.
+ * along with the run. Keeps automation nodes, unlocked hulls and rules, carriers (rebuilt
+ * fresh, as many as were owned), Marks, doctrine and cards.
  */
 export function admiralty(s: GameState): GameState {
   const marks = marksPayout(s);
@@ -427,6 +457,7 @@ export function admiralty(s: GameState): GameState {
     cards: structuredClone(s.cards),
     automation: structuredClone(s.automation),
   });
+  refillCarriers(next, s.ops.length);
   emit(focused(next), 'Admiralty', { marks });
   return next;
 }

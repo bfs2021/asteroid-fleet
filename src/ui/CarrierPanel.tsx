@@ -18,6 +18,7 @@ import { jumpCost, refineThroughput, solarRate, upkeep } from '../sim/state';
 import { cargoCap } from '../sim/tick';
 import { SHIP_CLASSES, type Sim } from '../sim/types';
 import { fmt } from './format';
+import { Shipyard } from './Shipyard';
 
 /** Rough per-link rates for the throughput = min(...) readout. Ore units per second. */
 function throughput(s: Sim) {
@@ -138,6 +139,8 @@ export function CarrierPanel() {
       <p className="hint">
         {HULLS[s.carrier.hullClass].name}: {HULLS[s.carrier.hullClass].blurb}
       </p>
+
+      {s.hulls.length > 1 && <Shipyard />}
 
       <h3>Refinery · level {s.carrier.refinery}</h3>
       <div className="row">

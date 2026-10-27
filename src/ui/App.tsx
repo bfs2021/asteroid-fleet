@@ -4,7 +4,6 @@ import { readBackups, readPrimaryText } from '../game/save';
 import { updateSettings, useSettings } from '../game/settings';
 import { SHIP_STATS } from '../sim/config';
 import { SHIP_CLASSES } from '../sim/types';
-import { CarrierPanel } from './CarrierPanel';
 import { DoctrinePanel } from './DoctrinePanel';
 import { downloadFile } from './download';
 import { resolveAlert } from '../game/toasts';
@@ -30,6 +29,9 @@ import { GearButton } from './GearButton';
 const Scene = lazy(() => import('../render/Scene').then((m) => ({ default: m.Scene })));
 const loadResearch = () => import('./ResearchPanel').then((m) => ({ default: m.ResearchPanel }));
 const loadSettings = () => import('./Settings').then((m) => ({ default: m.SettingsMenu }));
+const CarrierPanel = lazy(() =>
+  import('./CarrierPanel').then((m) => ({ default: m.CarrierPanel })),
+);
 const ResearchPanel = lazy(loadResearch);
 const SettingsMenu = lazy(loadSettings);
 
@@ -366,7 +368,11 @@ export function App() {
           <div className="panel-body">
             {tab === 'fleet' && <FleetPanel />}
             {tab === 'doctrine' && <DoctrinePanel />}
-            {tab === 'carrier' && <CarrierPanel />}
+            {tab === 'carrier' && (
+              <Suspense fallback={null}>
+                <CarrierPanel />
+              </Suspense>
+            )}
             {tab === 'research' && (
               <Suspense fallback={null}>
                 <ResearchPanel />

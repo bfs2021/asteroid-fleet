@@ -22,7 +22,7 @@ const withHull = (hullClass: (typeof HULL_IDS)[number], seed = 5) => {
     hulls: [...HULL_IDS],
     hullClass,
     discovered: [],
-    lifetime: { prestiges: 1, researchEarned: 0 },
+    lifetime: { prestiges: 1, researchEarned: 0, admiralties: 0, marksEarned: 0 },
   });
   return bind(g, focusOp(g));
 };

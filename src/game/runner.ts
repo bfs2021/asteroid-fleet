@@ -1,4 +1,4 @@
-import { apply, prestige, settleOffline, type OfflineReport } from '../sim/actions';
+import { admiralty, apply, prestige, settleOffline, type OfflineReport } from '../sim/actions';
 import { DT } from '../sim/config';
 import { BG_DT, dematerialise, materialise, stepBackground } from '../sim/background';
 import { bind, focusOp } from '../sim/state';
@@ -80,6 +80,13 @@ export class SimRunner {
       case 'prestige':
         if (!this.state) return;
         this.adopt(prestige(this.state, msg.hull));
+        this.sendEvents();
+        this.sendState();
+        this.sendFrame();
+        return;
+      case 'admiralty':
+        if (!this.state) return;
+        this.adopt(admiralty(this.state));
         this.sendEvents();
         this.sendState();
         this.sendFrame();

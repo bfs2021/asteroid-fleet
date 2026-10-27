@@ -1,5 +1,4 @@
 import type { InMsg, OutMsg } from './protocol';
-import { SimRunner } from './runner';
 
 export interface SimHost {
   kind: 'worker' | 'local';
@@ -23,7 +22,7 @@ export function createSimHost(onMessage: (msg: OutMsg) => void, preferWorker = t
         e.preventDefault();
         console.warn('Sim worker failed to start; running the sim on the main thread.');
         worker.terminate();
-        local = createLocalHost(onMessage);
+        local = createLazyLocalHost(onMessage);
         host.kind = 'local';
         for (const m of pending) local.post(m);
         pending = null;
@@ -43,16 +42,27 @@ export function createSimHost(onMessage: (msg: OutMsg) => void, preferWorker = t
       /* worker construction blocked (CSP, old browser); fall back below */
     }
   }
-  return createLocalHost(onMessage);
+  return createLazyLocalHost(onMessage);
 }
 
 /**
- * Same protocol as the worker, on this thread. Messages are structured-cloned both ways
- * so neither side can hold a live reference into the other's state.
+ * The main-thread sim lives in its own chunk (./localHost), fetched only when the worker is
+ * unavailable. Messages posted before the chunk arrives are queued and replayed in order.
  */
-export function createLocalHost(onMessage: (msg: OutMsg) => void): SimHost & { runner: SimRunner } {
-  const runner = new SimRunner((msg, transfer) =>
-    onMessage(structuredClone(msg, { transfer: transfer ?? [] })),
+function createLazyLocalHost(onMessage: (msg: OutMsg) => void): SimHost {
+  let inner: SimHost | null = null;
+  let queue: InMsg[] | null = [];
+  import('./localHost').then(
+    ({ createLocalHost }) => {
+      inner = createLocalHost(onMessage);
+      for (const m of queue ?? []) inner.post(m);
+      queue = null;
+    },
+    (err: unknown) => {
+      console.error('Failed to load the main-thread sim.', err);
+      queue = null;
+      onMessage({ t: 'error', text: 'Could not load the simulation. Reload the page to retry.' });
+    },
   );
-  return { kind: 'local', runner, post: (msg) => runner.handle(structuredClone(msg)) };
+  return { kind: 'local', post: (msg) => (inner ? inner.post(msg) : queue?.push(msg)) };
 }
